@@ -1,25 +1,45 @@
 @echo off
-rem install_scheduled_task.bat — 一键注册"每日22:00自动增量导入"任务计划（卡5）
-rem 运行一次即可；改时间改下面的 /st 参数（24小时制，如 22:00 / 08:30）
+rem install_scheduled_task.bat — 定时任务注册（V1卡5 + V2卡5 扩展）
+rem 可注册两个任务（任选，都可单独关）：
+rem   A. rag_kb_ingest   每天 22:00  增量导入（新笔记自动入库）
+rem   B. rag_kb_growth   每周日 22:30 完整生长循环（导入+体检+规划+执行+审核同步）
 chcp 65001 >nul
 cd /d E:\ai-learn\rag_kb
-
 echo ============================================
-echo    注册定时任务：每天 22:00 自动增量导入
-echo   触发内容: 新笔记自动分类入库 / 变更替换 / 删除移除
-echo   日志位置: E:\ai-learn\rag_kb\ingest.log
+echo   ? 定时任务注册（选要装的，输入对应数字回车）
+echo   1. 每日22:00 增量导入（rag_kb_ingest）
+echo   2. 每周日22:30 生长循环（rag_kb_growth）
+echo   3. 两个都装
+echo   0. 跳过
 echo ============================================
+set /p choice=请输入数字:
 
+if "%choice%"=="1" goto install_ingest
+if "%choice%"=="2" goto install_growth
+if "%choice%"=="3" goto install_both
+if "%choice%"=="0" goto end
+echo 无效输入，退出
+goto end
+
+:install_ingest
 schtasks /create /tn "rag_kb_ingest" /tr "E:\ai-learn\rag_kb\ingest_scheduled.bat" /sc daily /st 22:00 /f
+echo [OK] 每日22:00增量导入已注册
+goto end
 
-if %errorlevel%==0 (
-    echo.
-    echo [OK] 定时任务已注册：每天 22:00 自动运行（后台静默，不弹窗）
-    echo    验证: schtasks /query /tn rag_kb_ingest
-    echo    手动触发测试: schtasks /run /tn rag_kb_ingest
-    echo    删除任务: schtasks /delete /tn rag_kb_ingest /f
-) else (
-    echo.
-    echo [FAIL] 注册失败，请检查权限（管理员或当前用户权限）
-)
+:install_growth
+schtasks /create /tn "rag_kb_growth" /tr "E:\ai-learn\rag_kb\growth_scheduled.bat" /sc weekly /d SUN /st 22:30 /f
+echo [OK] 每周日22:30生长循环已注册
+goto end
+
+:install_both
+call :install_ingest
+call :install_growth
+goto end
+
+:end
+echo.
+echo 管理命令：
+echo   停用:   schtasks /change /tn 任务名 /disable
+echo   启用:   schtasks /change /tn 任务名 /enable
+echo   删除:   schtasks /delete /tn 任务名 /f
 pause
