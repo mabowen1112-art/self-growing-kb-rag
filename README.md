@@ -13,6 +13,7 @@ E:\ai-learn\rag_kb\
 ├── extractors.py   # 多模态提取器：md / pdf / docx / 图片OCR → 统一切片格式
 ├── directions.yaml # 生长方向配置（加方向只改这里，不改代码）
 ├── directions.py   # 方向分类器：关键词加权打分 → 补全 frontmatter（卡4）
+├── health_check.py # 体检模块（V2卡1）：失效链接/孤立页/词典一致性/过期
 ├── api.py          # FastAPI 后端：/api/ask /api/health /api/stats（三层架构中间层）
 ├── ask_kb.py       # RAG 问答核心：粗筛 → Rerank 精排 → DeepSeek（带缓存）
 ├── app.py          # Streamlit 前端（只调后端 API，不直连 RAG）
