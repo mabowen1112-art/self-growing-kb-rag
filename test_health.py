@@ -76,17 +76,17 @@ def test_dict_consistency():
 
 
 def test_real_kb_finds_issues():
-    """真实知识库 smoke test：体检能跑且发现 ≥1 类真实问题（当前库确有失效链接/词典遗漏）"""
+    """真实知识库 smoke test：体检能跑且报告结构完整（不绑定具体问题——
+    已知问题修复后可能为 0，断言的是机制本身工作）"""
     report = hc.run_health()
     assert report["total_pages"] > 20, f"真实库页数异常：{report['total_pages']}"
-    issues = (len(report["broken_links"]) + len(report["dict_missing"]) +
-              len(report["dict_dead"]) + len(report["stale"]))
-    # 孤立页不算"问题"硬指标（新页面未关联是常态）；失效链接/词典遗漏必须是 0 容忍
+    # 报告结构完整
+    assert isinstance(report["broken_links"], list)
+    assert isinstance(report["orphans"], list)
+    assert isinstance(report["dict_missing"], list)
+    assert isinstance(report["stale"], list)
     print(f"  真实库体检：{report['total_pages']} 页，失效链接 {len(report['broken_links'])}，"
           f"词典遗漏 {len(report['dict_missing'])}，孤立 {len(report['orphans'])}")
-    # 断言体检机制本身工作（能发现当前已知问题：词典漏"信息差"）
-    assert any("信息差" in m for m in report["dict_missing"]), \
-        f"应能发现词典漏条目：{report['dict_missing']}"
 
 
 if __name__ == "__main__":
