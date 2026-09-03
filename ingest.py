@@ -90,9 +90,13 @@ def scan_files(kb_root: Path):
         if not base.exists():
             continue
         for root, dirs, fnames in os.walk(base):
-            # 排除目录
+            # 排除目录（V2卡3修复：检查当前目录自身 + 剪掉子目录，不再处理排除目录内文件）
+            root_rel = str(Path(root).relative_to(kb_root)).replace("\\", "/")
+            if root_rel in config.EXCLUDE_DIRS:
+                dirs[:] = []
+                continue
             dirs[:] = [d for d in dirs
-                       if str(Path(root).relative_to(kb_root)).replace("\\", "/") not in config.EXCLUDE_DIRS]
+                       if f"{root_rel}/{d}" not in config.EXCLUDE_DIRS]
             for fn in fnames:
                 if Path(fn).suffix.lower() not in config.IMPORT_EXTS:
                     continue

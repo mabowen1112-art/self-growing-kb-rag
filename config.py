@@ -12,7 +12,10 @@ COLLECTION_NAME = "my_kb"                    # Chroma 集合名
 # ---- 导入范围：要扫哪些目录（相对 KB_ROOT）----
 # 新增目录直接往列表里加；用 exclude 排除子目录
 IMPORT_DIRS = ["concepts", "entities", "raw"]
-EXCLUDE_DIRS = []                            # 例：["concepts/旧版"]
+EXCLUDE_DIRS = ["raw/_草稿"]                  # AI起草的新笔记草稿区（审核转正前不进向量库）
+
+# ---- AI 起草草稿目录（executor V2卡3）----
+DRAFT_DIR = KB_ROOT / "raw" / "_草稿"
 
 # ---- 支持的文件类型（多模态：md + pdf + docx + 图片OCR）----
 IMPORT_EXTS = [".md", ".pdf", ".docx", ".png", ".jpg", ".jpeg"]
