@@ -1,0 +1,56 @@
+# directions.yaml — 生长方向配置（卡4）
+# 新笔记自动归类依据。加新方向 = 在这里加一段，不用改代码。
+# 计分：keywords 命中 +1，strong 命中 +2（强特征词，如 RAG/ESP32/复利）
+# 规则：最高分方向胜出；命中 < min_hits 或 ≥3 个方向都达标（混合文档）或平局 → 低置信（只补 summary，不写 domain）
+# 输出规则：domain 必给 1 个（命中才给），tags 最多 3 个（宁缺毋滥）
+
+directions:
+  - name: AI学习
+    domain: ai
+    tags: [tool, architecture, course]
+    min_hits: 3
+    keywords: [API, 检索, rerank, Streamlit, 大模型, LLM, AIGC, 微调, 推理,
+               模型训练, 智能体, 提示词, 结构化输出, 向量检索, 知识库, 对话]
+    strong: [RAG, embedding, 向量, DeepSeek, Agent, Chroma, YOLO, 计算机视觉,
+             目标检测, 视觉模型]
+    exclude: [基金, 理财, 复利, 定投]
+
+  - name: 硬件开发
+    domain: im
+    tags: [esp32, 硬件, 课程]
+    min_hits: 3
+    keywords: [按键, WiFi, 传感器, 嵌入式, MicroSD, 面包板, 固件, 点灯,
+               电路, 录音笔, 上传服务器, 引脚, 上拉, 脉冲]
+    strong: [ESP32, GPIO, 录音, LED]
+    exclude: []
+
+  - name: 信息管理专业
+    domain: im
+    tags: [course, data-science, system-design]
+    min_hits: 3
+    keywords: [数据科学, 系统分析, 系统设计, 课程体系, 管理学, 大数据,
+               数据分析, 商业分析, 企业信息化]
+    strong: [信息系统, 信息管理, 信管, 数据库]
+    exclude: [ESP32, GPIO]
+
+  - name: 个人成长
+    domain: general
+    tags: [career, methodology, productivity]
+    min_hits: 3
+    keywords: [职业规划, 考研, 就业, 方法论, 生产力, 思维模型, 决策,
+               认知, 习惯, 学习路线, 目标管理, 时间管理]
+    strong: [职业, 规划]
+    exclude: []   # 兜底方向，不做排除（防误伤）
+
+  - name: 金融理财
+    domain: life
+    tags: [finance, 理财]
+    min_hits: 3
+    keywords: [投资, 风险, 收益, 股票, 债券, 利率, 资产, 储蓄, 保险, 财务]
+    strong: [复利, 定投, 基金, 理财, 金融]
+    exclude: [ESP32, GPIO, RAG, 向量]
+
+# 无任何方向命中 → 默认方向
+default:
+  domain: general
+  tags: []

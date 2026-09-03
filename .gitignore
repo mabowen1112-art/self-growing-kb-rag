@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# ---- 敏感信息（绝不能推上 GitHub）----
+# API keys: SILICONFLOW_API_KEY / DEEPSEEK_API_KEY
+.env
+
+# ---- 本地数据/运行时产物（可重建，不入库）----
+kb_db/
+kb_meta.db
+qa_cache.json
+ingest.log
+*.log
+
+# ---- 本地小工具文件（课程演示用，不入库）----
+demo_json.py
+rerank_demo.py
+ingest_scheduled_gbk.bat
