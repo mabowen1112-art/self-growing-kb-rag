@@ -104,22 +104,35 @@ def run_loop(apply=False, max_tasks=5):
     s5 = step_review_sync()
     s6 = step_contested()
 
+    # 待人工处理任务（卡4界面砍掉后，这类需 Obsidian 手动，循环里提示）
+    import sqlite3
+    conn = sqlite3.connect(config.META_DB)
+    manual = conn.execute(
+        "SELECT id, type, target FROM tasks WHERE status='pending' "
+        "AND type IN ('link_orphan','classify_note','add_dict') ORDER BY id").fetchall()
+    conn.close()
+
     # 总结
     print("\n" + "=" * 50)
     print("📋 本轮生长总结")
     print("=" * 50)
-    print(f"  ① 导入：新增 {s1['added_notes']} 篇 / 变更 {s1['changed_notes']} / 库共 {s1['added_chunks'] + s1['removed_chunks'] + 0} 块变化")
+    print(f"  ① 导入：新增 {s1['added_notes']} 篇 / 变更 {s1['changed_notes']}（向量块 +{s1['added_chunks']}/-{s1['removed_chunks']}）")
     issues = (len(r2["broken_links"]) + len(r2["orphans"]) + len(r2["dict_missing"]))
     print(f"  ② 体检：失效链接 {len(r2['broken_links'])} / 孤立页 {len(r2['orphans'])} / 词典漏 {len(r2['dict_missing'])}")
     print(f"  ③ 规划：新增任务 {added_tasks} 个")
     print(f"  ④ 执行：处理 {done_exec} 个（{'自动' if apply else '预览'}）")
     print(f"  ⑤ 审核同步：转正 {s5['approved']} / 拒绝 {s5['rejected']}")
     print(f"  ⑥ 矛盾标记：{len(s6)} 个")
+    if manual:
+        print(f"\n  👉 待人工处理 {len(manual)} 个任务（需 Obsidian 手动，处理后在任务表标记 done 或删除）：")
+        for mid, mtype, mtarget in manual[:8]:
+            print(f"     [{mid}] {mtype} → {mtarget}")
     elapsed = (datetime.now() - t0).total_seconds()
     print(f"\n⏱️ 本轮耗时 {elapsed:.1f}s")
     print("🌱 ========== 生长循环结束 ==========")
     return {"ingest": s1, "health": r2, "tasks_added": added_tasks,
-            "executed": done_exec, "review": s5, "contested": len(s6)}
+            "executed": done_exec, "review": s5, "contested": len(s6),
+            "manual_tasks": len(manual)}
 
 
 if __name__ == "__main__":

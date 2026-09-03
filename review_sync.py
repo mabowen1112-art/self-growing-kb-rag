@@ -103,9 +103,12 @@ def sync_reviews():
                 conn.execute("UPDATE tasks SET status='approved' WHERE id=?", (task_id,))
                 append_log(page_name, f"审核通过（拖拽转正至 {rel_dir}）", rel_dir)
                 index_ok = in_index(page_name)
+                after = found.read_text(encoding="utf-8")[:600]
+                tags_empty = re.search(r"tags: \[\]", after) is not None
                 print(f"✅ [{task_id}] {page_name}.md → approved（{rel_dir}"
                       f"{'，已清理待审核tag' if stripped else ''}）"
-                      + ("" if index_ok else f"\n   ⚠️ 未收录 index.md，记得补条目"))
+                      + ("" if index_ok else f"\n   ⚠️ 未收录 index.md，记得补条目")
+                      + ("" if not tags_empty else "\n   ⚠️ tags 为空，记得补领域 tag（如 tool/course/finance）"))
                 stats["approved"] += 1
             else:
                 # 完全消失 = 用户删除 = 拒绝

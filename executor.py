@@ -157,11 +157,11 @@ def execute_deterministic(task, apply=False):
             target_file.write_text(new_text, encoding="utf-8")
             return action, "ok"
         if task["type"] == "add_dict":
-            return None, "add_dict 需人工确认插入位置，暂不自动执行（等待卡4界面）"
+            return None, "add_dict 需人工确认插入位置（Obsidian 手动改词典目录，或修改任务 detail 后重跑）"
         if task["type"] == "link_orphan":
-            return None, "link_orphan 需确认关联页面，暂不自动执行（等待卡4界面）"
+            return None, "link_orphan 需人工确认关联页面（Obsidian 手动在目标页加链接，改完删任务）"
         if task["type"] == "classify_note":
-            return None, "classify_note 需确认 domain 值，暂不自动执行（等待卡4界面）"
+            return None, "classify_note 需人工确认 domain（Obsidian 补 frontmatter，改完删任务）"
     finally:
         conn.close()
     return None, f"未知任务类型 {task['type']}"
