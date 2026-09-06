@@ -44,13 +44,13 @@ def step_planner():
     return added
 
 
-def step_executor(apply: bool, max_tasks: int):
-    """④ 执行器：按任务干活（默认预览；--apply 才真改/起草）"""
+def step_executor(apply: bool, max_tasks: int, auto_safe: bool = False):
+    """④ 执行器：按任务干活（默认预览；--apply 才执行；--auto-safe 只做高置信）"""
     print("\n" + "=" * 50)
-    print(f"④ 执行器（{'自动执行' if apply else '预览，--apply 才执行'}）")
+    print(f"④ 执行器（{'自动执行·仅高置信' if auto_safe else '自动执行' if apply else '预览，--apply 才执行'}）")
     print("=" * 50)
     import executor
-    return executor.run_executor(apply=apply, max_tasks=max_tasks)
+    return executor.run_executor(apply=apply, max_tasks=max_tasks, auto_safe=auto_safe)
 
 
 def step_review_sync():
@@ -92,7 +92,7 @@ def step_contested():
     return found
 
 
-def run_loop(apply=False, max_tasks=5):
+def run_loop(apply=False, max_tasks=5, auto_safe=False):
     """完整生长循环 → 总结"""
     t0 = datetime.now()
     print("🌱 ========== 生长循环开始 ==========")
@@ -100,7 +100,7 @@ def run_loop(apply=False, max_tasks=5):
     s1 = step_ingest(apply)
     r2 = step_health()
     added_tasks = step_planner()
-    done_exec = step_executor(apply, max_tasks)
+    done_exec = step_executor(apply, max_tasks, auto_safe)
     s5 = step_review_sync()
     s6 = step_contested()
 
@@ -139,6 +139,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="生长循环闭环（V2卡5）")
     parser.add_argument("--apply", action="store_true",
                         help="执行器自动执行（默认只预览）")
+    parser.add_argument("--auto-safe", action="store_true",
+                        help="安全自动模式：只自动执行高置信任务（低置信挂起等人工）")
     parser.add_argument("--max", type=int, default=5, help="执行器最多处理任务数")
     args = parser.parse_args()
-    run_loop(apply=args.apply, max_tasks=args.max)
+    run_loop(apply=args.apply or args.auto_safe, max_tasks=args.max, auto_safe=args.auto_safe)

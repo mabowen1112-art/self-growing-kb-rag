@@ -1,7 +1,7 @@
 @echo off
-rem ingest_scheduled.bat — 每日22:00 增量导入入口（V2 稳定性补丁：失败重试+标记）
-rem 网络瞬时故障（Clash 节点抽风）是定时失败主因 → 失败等 30s 重试，最多 3 次
-rem 仍失败 → 写 FAILED 标记文件（手动跑生长循环时会提示）
+rem ingest_scheduled.bat — 增量导入入口（备用）
+rem 2026-09-06 起每日生长循环 growth_loop.py 已内含导入步骤，此任务可停用/删除
+rem 保留作单独导入用途；失败重试 3 次 + FAILED 标记文件
 cd /d E:\ai-learn\rag_kb
 
 echo [%date% %time%] ==== 定时增量导入开始 ==== >> ingest.log

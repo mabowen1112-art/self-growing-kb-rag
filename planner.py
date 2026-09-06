@@ -24,6 +24,7 @@ DS_KEY = os.getenv("DEEPSEEK_API_KEY")
 TASK_TYPES = {"fix_link", "add_dict", "link_orphan", "new_knowledge", "classify_note"}
 VALID_STATUS = {"pending", "done", "skipped", "approved", "rejected"}
 MAX_TASKS = 10  # 单次规划最多生成任务数（控制成本）
+MAX_PENDING_TASKS = 30  # 任务池总量上限：pending 超过则暂停生成（2026-09-06）
 
 
 # ============ 信号收集（规则层，LLM 不参与） ============
@@ -237,6 +238,22 @@ def save_tasks(tasks, source="planner", conn=None, meta_db=None):
 
 def run_planner(llm_fn=None, kb_root=None, meta_db=None):
     """跑完整规划 → 返回新增任务数（llm_fn 可注入替身，测试用）"""
+    # 任务池总量上限（2026-09-06）：pending > 30 暂停生成，提示先处理积压
+    import sqlite3 as _sq
+    conn = _sq.connect(meta_db or config.META_DB)
+    try:
+        conn.execute("SELECT COUNT(*) FROM tasks WHERE status='pending'")  # 表不存在则异常
+        pending_count = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE status='pending'").fetchone()[0]
+    except _sq.OperationalError:
+        pending_count = 0  # tasks 表还没建（首次运行），不拦截
+    finally:
+        conn.close()
+    if pending_count >= MAX_PENDING_TASKS:
+        print(f"⚠️ 任务池已满（{pending_count} ≥ {MAX_PENDING_TASKS} pending），"
+              f"先处理积压任务再生成新的（跑 growth_loop.py 或手动审草稿）")
+        return 0
+
     print("🔍 收集 5 路信号...")
     signals = collect_signals(kb_root)
     signals_text = format_signals(signals)
