@@ -72,6 +72,26 @@ schtasks /change /tn <任务名> /disable     # 停用（enable 恢复）
 schtasks /delete /tn <任务名> /f           # 删除
 ```
 
+## RAG 问答链路（V1 核心，2026-08-10 课程实测 ✅）
+
+```
+笔记/PDF/图片 → ingest 导入
+  ① 切片：md 按 ## 标题切块（跳过 frontmatter，<30字符丢弃）；PDF 按页；docx 按标题；图片本地 OCR
+  ② 向量化：硅基流动 bge-m3（1024维，批量10条）
+  ③ 存储：Chroma PersistentClient（kb_db/，cosine）
+
+提问 → ask_kb.py
+  ④ 粗筛：bge-m3 检索 top-30（距离 ≤0.75）
+  ⑤ 精排：bge-reranker-v2-m3 重排 top-5（相关度 ≥0.5）——必须配，单独检索会"检不全"
+  ⑥ 生成：DeepSeek 结构化 JSON（response_format=json_object）+ 程序二次校验
+  ⑦ 回答分两层：📌资料层（忠实知识库+标来源）/ 💡补充层（AI通用知识，标注区分不混淆）
+  ⑧ 缓存：qa_cache.json 相同问题零费用秒回；限流 60秒10次
+  ⑨ 防幻觉：没检索到 → 明确提示不编造（测试锁死：埃菲尔铁塔类问题必须拒绝）
+```
+
+关键参数集中在 `config.py`：`RETRIEVE_TOP=30 / RETRIEVE_MAX_DISTANCE=0.75 / RERANK_K=5 / RERANK_MIN_SCORE=0.5`
+（⚠️ 阈值按知识库规模调，勿照抄死值——知识库 139→206 块时实测 top-3 不够调到 top-5）
+
 ## 关键设计
 
 - **安全三件套**：默认 dry-run、改前备份（task_undo 可回滚）、detail 模糊拒绝执行
