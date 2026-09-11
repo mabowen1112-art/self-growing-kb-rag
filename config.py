@@ -36,7 +36,7 @@ RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
 RERANK_URL = "https://api.siliconflow.cn/v1/rerank"
 RETRIEVE_TOP = 30                            # 粗筛 top-30
 RETRIEVE_MAX_DISTANCE = 0.75                 # 距离阈值
-RERANK_K = 5                                 # 精排 top-5（原 3，知识库涨后不够）
+RERANK_K = 7                                 # 精排 top-7（原 3→5；2026-09-11 实验#2：5→7，拥挤查询下定义源会被挤出 top-5）
 RERANK_MIN_SCORE = 0.25                      # 相关度阈值（2026-09-11 实验#1：0.5→0.25，救回"两段式检索"被低估的命中块）
 
 # ---- LLM ----
