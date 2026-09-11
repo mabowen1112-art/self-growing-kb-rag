@@ -85,7 +85,7 @@ def retrieve(question, k=config.RERANK_K, max_distance=config.RETRIEVE_MAX_DISTA
 
 
 # ⑤ 生成：结构化 JSON + 二次校验
-def answer(question, hits):
+def answer(question, hits, _retry=True):
     parts = [
         f"【资料块】来源:{meta['source']}（章节:{meta['heading']}）\n{doc}"
         for doc, meta, _score in hits
@@ -128,9 +128,13 @@ def answer(question, hits):
     try:
         data = json.loads(raw)
         if not data.get("answer") or not isinstance(data.get("sources"), list):
+            if _retry:  # 2026-09-11：模型偶发格式异常 → 自动重试一次
+                return answer(question, hits, _retry=False)
             return "⚠️ AI 返回格式异常（已拦截）", []
         return data["answer"], data["sources"]
     except json.JSONDecodeError:
+        if _retry:  # 2026-09-11：偶发非法 JSON → 自动重试一次
+            return answer(question, hits, _retry=False)
         return "⚠️ AI 返回不是合法 JSON（已拦截）", []
 
 
