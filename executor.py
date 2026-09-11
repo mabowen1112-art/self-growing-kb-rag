@@ -217,7 +217,7 @@ summary: 一句话摘要
         headers={"Authorization": f"Bearer {DS_KEY}", "Content-Type": "application/json"},
         json={"model": config.CHAT_MODEL,
               "messages": [{"role": "user", "content": prompt}],
-              "temperature": 0.3, "max_tokens": 1500},
+              "temperature": 0.3, "max_tokens": 3000},  # 2026-09-11 1500→3000（草稿较长，防新模型截断）
         timeout=120,
     )
     r.raise_for_status()

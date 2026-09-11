@@ -19,6 +19,7 @@ kb_meta.db
 qa_cache.json
 ingest.log
 *.log
+eval_results/
 
 # ---- 本地小工具文件（课程演示用，不入库）----
 demo_json.py

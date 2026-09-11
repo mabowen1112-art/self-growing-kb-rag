@@ -1,0 +1,133 @@
+# ============================================================
+# 评测集 v1（L3 调优用）— 主人：马博文
+# ------------------------------------------------------------
+# 怎么用：
+#   1) 每题填 points（3~5 个要点）：每个要点写成 "关键词1|关键词2|同义写法"
+#      回答文本里出现【任一关键词】= 该要点命中（不区分大小写）
+#   2) 跑基线：      uv run python eval_kb.py
+#   3) 改一个变量（rerank / top-k / 切块 / 提示词）后再跑一次：
+#                    uv run python eval_kb.py
+#   4) 对比两次结果：uv run python eval_kb.py --compare eval_results/基线.json
+#
+# 规则：
+#   - 题目和要点【必须你自己写】——这是评测的核心能力，AI 不能替
+#   - q/source 空着的题会被自动跳过（不会报错）
+#   - source = 预期来源关键词（会去匹配检索结果的来源文件名）
+# ============================================================
+
+questions:
+
+  # ---------- q01~q10：沿用 test_acceptance.py 的题目（问法已验证可靠） ----------
+  - id: q01
+    q: "复利是什么？"
+    source: "金融通识课.md"
+    points: []   # 待填。示例格式：["利滚利|利息生利息", "时间越长效果越明显|指数增长"]
+
+  - id: q02
+    q: "定投是什么意思？"
+    source: "金融通识课.md"
+    points: []
+
+  - id: q03
+    q: "马博文是谁？"
+    source: "马博文.md"
+    points: []
+
+  - id: q04
+    q: "ESP32 怎么点灯？"
+    source: "ESP32硬件课"
+    points: []
+
+  # ↓↓↓ 以下是两个【示例要点】（已按知识库内容写好，可对照格式后自行修改）↓↓↓
+  - id: q05
+    q: "RAG 是什么？"
+    source: "RAG.md"
+    points:
+      - "检索增强生成|Retrieval-Augmented Generation"
+      - "向量|embedding|嵌入"
+      - "切块|切片|chunk"
+      - "先检索|检索资料|检索出"
+      - "来源|引用"
+
+  - id: q06
+    q: "学透标准 L0 L1 L2 L3 是什么？"
+    source: "学透标准"
+    points:
+      - "四层|四个层"
+      - "L0 知道|L0知道"
+      - "L1 会用|L1会用"
+      - "L2 懂原理|L2懂原理"
+      - "L3 能创造|L3能创造"
+      - "验收动作"
+  # ↑↑↑ 示例结束 ↑↑↑
+
+  - id: q07
+    q: "考研还是就业？"
+    source: "考研vs就业"
+    points: []
+
+  - id: q08
+    q: "YOLO 是什么？"
+    source: "学习概念词典.md"
+    points: []
+
+  - id: q09
+    q: "AI工具生态有哪些？"
+    source: "AI工具生态.md"
+    points: []
+
+  - id: q10
+    q: "什么是半自生长知识库？"
+    source: "AI项目-自生长知识库.md"
+    points: []
+
+  # ---------- q11~q20：你来出题（写你平时真的会问知识库的问题） ----------
+  - id: q11
+    q: ""
+    source: ""
+    points: []
+
+  - id: q12
+    q: ""
+    source: ""
+    points: []
+
+  - id: q13
+    q: ""
+    source: ""
+    points: []
+
+  - id: q14
+    q: ""
+    source: ""
+    points: []
+
+  - id: q15
+    q: ""
+    source: ""
+    points: []
+
+  - id: q16
+    q: ""
+    source: ""
+    points: []
+
+  - id: q17
+    q: ""
+    source: ""
+    points: []
+
+  - id: q18
+    q: ""
+    source: ""
+    points: []
+
+  - id: q19
+    q: ""
+    source: ""
+    points: []
+
+  - id: q20
+    q: ""
+    source: ""
+    points: []

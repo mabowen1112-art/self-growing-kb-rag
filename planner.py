@@ -155,7 +155,7 @@ def llm_plan(signals_text: str):
             "model": config.CHAT_MODEL,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
-            "max_tokens": 1200,
+            "max_tokens": 2048,  # 2026-09-11 1200→2048（防新模型回答变长截断）
             "response_format": {"type": "json_object"},
         },
         timeout=90,

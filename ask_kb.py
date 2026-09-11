@@ -115,13 +115,16 @@ def answer(question, hits):
             "model": "deepseek-chat",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
-            "max_tokens": 800,
+            "max_tokens": 2048,  # 2026-09-11 上调：DeepSeek 换新模型后回答更长，800 会被截断（finish_reason=length）
             "response_format": {"type": "json_object"},
         },
         timeout=60,
     )
     r.raise_for_status()
-    raw = r.json()["choices"][0]["message"]["content"]
+    choice = r.json()["choices"][0]
+    raw = choice["message"]["content"]
+    if choice.get("finish_reason") == "length":
+        return "⚠️ 回答被截断（finish_reason=length，max_tokens 不足）", []
     try:
         data = json.loads(raw)
         if not data.get("answer") or not isinstance(data.get("sources"), list):
