@@ -15,7 +15,7 @@ E:\ai-learn\rag_kb\
 ├── ask_kb.py            # RAG 问答核心：粗筛→rerank→DeepSeek→缓存
 ├── api.py / app.py      # FastAPI 后端 / Streamlit 前端（三层架构）
 │
-├── health_check.py      # 体检（V2卡1）：失效链接/孤立页/词典一致性/过期
+├── health_check.py      # 体检（V2卡1）：失效链接/孤立页/词典一致性/过期；2026-09-15 精度修复
 ├── planner.py           # 规划器（V2卡2）：5路信号→LLM任务清单→入库去重
 ├── executor.py          # 执行器（V2卡3）：dry-run安全闸+备份回滚+草稿起草+AI日志
 ├── review_sync.py       # 拖拽同步器（V2卡4）：草稿去向→自动approved/rejected
@@ -29,7 +29,7 @@ E:\ai-learn\rag_kb\
 ├── ingest_scheduled.bat / growth_scheduled.bat   # 定时任务入口
 ├── install_scheduled_task.bat  # 注册 每日导入/每周生长循环（可关）
 ├── 使用说明.txt          # 用户使用说明（GBK，双击即看）
-└── test_*.py (11个)     # 32 测试全绿
+└── test_*.py (12个)     # 35 测试全绿
 ```
 
 ## 快速开始
@@ -50,7 +50,7 @@ uv run python planner.py                   # 规划器（列任务）
 uv run python review_sync.py               # 审核同步（拖拽感知）
 
 # 4. 全量测试
-uv run pytest                              # 32 passed
+uv run pytest                              # 35 passed
 ```
 
 ## 使用方式（详见 使用说明.txt）
@@ -61,13 +61,13 @@ uv run pytest                              # 32 passed
 | 双击手动生长循环.bat | 体检→规划→执行→审核同步完整一圈 |
 | 拖 raw/_草稿/X.md 到 concepts/ | review_sync 自动标 approved + 清待审核 tag + 写 log |
 | 删除 raw/_草稿/X.md | 自动标 rejected（去重记住，不再生成） |
-| 每周日 22:30（可选定时） | 完整生长循环 |
+| 每天 22:00（定时任务 rag_kb_growth） | 完整生长循环（含增量导入） |
 
 ## 定时任务管理
 
 ```bash
-schtasks /query /tn rag_kb_ingest          # 每日22:00 增量导入
-schtasks /query /tn rag_kb_growth          # 每周日22:30 生长循环
+schtasks /query /tn rag_kb_growth          # 每日22:00 生长循环（含增量导入；2026-09-06 起每日）
+schtasks /query /tn rag_kb_ingest          # 已停用（保留备用：单独跑增量导入；2026-09-06 停）
 schtasks /change /tn <任务名> /disable     # 停用（enable 恢复）
 schtasks /delete /tn <任务名> /f           # 删除
 ```
@@ -82,14 +82,14 @@ schtasks /delete /tn <任务名> /f           # 删除
 
 提问 → ask_kb.py
   ④ 粗筛：bge-m3 检索 top-30（距离 ≤0.75）
-  ⑤ 精排：bge-reranker-v2-m3 重排 top-5（相关度 ≥0.5）——必须配，单独检索会"检不全"
+  ⑤ 精排：bge-reranker-v2-m3 重排 top-7（相关度 ≥0.25，2026-09-11 调优）——必须配，单独检索会"检不全"
   ⑥ 生成：DeepSeek 结构化 JSON（response_format=json_object）+ 程序二次校验
   ⑦ 回答分两层：📌资料层（忠实知识库+标来源）/ 💡补充层（AI通用知识，标注区分不混淆）
   ⑧ 缓存：qa_cache.json 相同问题零费用秒回；限流 60秒10次
   ⑨ 防幻觉：没检索到 → 明确提示不编造（测试锁死：埃菲尔铁塔类问题必须拒绝）
 ```
 
-关键参数集中在 `config.py`：`RETRIEVE_TOP=30 / RETRIEVE_MAX_DISTANCE=0.75 / RERANK_K=5 / RERANK_MIN_SCORE=0.5`
+关键参数集中在 `config.py`：`RETRIEVE_TOP=30 / RETRIEVE_MAX_DISTANCE=0.75 / RERANK_K=7 / RERANK_MIN_SCORE=0.25`（后两个为 2026-09-11 调优值）
 （⚠️ 阈值按知识库规模调，勿照抄死值——知识库 139→206 块时实测 top-3 不够调到 top-5）
 
 ## 关键设计
@@ -101,7 +101,7 @@ schtasks /delete /tn <任务名> /f           # 删除
 - **防幻觉**：问答两层（📌资料+💡补充标注区分）；起草必须结合素材，硬数据不编造
 - **成本管控**：qa_cache 相同问题零费用；一次生长循环约 1 次规划 LLM 调用
 
-## 测试（32 passed）
+## 测试（35 passed）
 
 - V1：ingest 增量 / multimodal 多模态 / classify 分类 / api / rag / app / acceptance 验收
 - V2：health 体检 / planner 规划（假LLM注入+真实端到端）/ executor 执行（备份回滚+草稿）/ review_sync 拖拽同步 / growth_loop 闭环冒烟

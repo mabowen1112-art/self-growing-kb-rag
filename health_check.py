@@ -18,12 +18,24 @@ WIKILINK_RE = re.compile(r"\[\[([^\]|#]*)(#[^\]|]*)?(\|[^\]]*)?\]\]")
 STALE_DAYS = 90  # updated 超过 90 天且被体检提醒
 
 
-def collect_pages(kb_root: Path):
-    """扫描全部 md → {页面名(stem): {path, abs, text, updated}}"""
+def collect_pages(kb_root=None):
+    """扫描全部 md → {页面名(stem): {path, abs, text, updated}}
+    ⚠️ 2026-09-15：排除 EXCLUDE_DIRS（raw/_草稿）——草稿未定稿，与 ingest 口径一致，
+    不再被当成内容页参与孤立页/失效链接/未分类检查（否则一进草稿就刷假问题）"""
+    kb_root = Path(kb_root) if kb_root else config.KB_ROOT
+    excl = {d.replace("\\", "/").strip("/") for d in config.EXCLUDE_DIRS}
     pages = {}
-    for root, _, files in os.walk(kb_root):
+    for root, dirs, files in os.walk(kb_root):
         if ".obsidian" in root or ".git" in root:
+            dirs[:] = []
             continue
+        rel_root = Path(root).relative_to(kb_root).as_posix()
+        rel_root = "" if rel_root == "." else rel_root
+        # 整棵子树跳过（含排除目录自身）——同 ingest 的 EXCLUDE_DIRS 修复（坑#12）
+        if any(rel_root == e or rel_root.startswith(e + "/") for e in excl):
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if f"{rel_root}/{d}".lstrip("/") not in excl]
         for fn in files:
             if not fn.endswith(".md"):
                 continue
@@ -32,6 +44,22 @@ def collect_pages(kb_root: Path):
             updated = extract_updated(text)
             pages[Path(fn).stem] = {"path": abs_path, "text": text, "updated": updated}
     return pages
+
+
+def link_target_exists(target, pages, all_files, kb_root):
+    """链接目标是否存在：① 页面名(stem)/磁盘文件名 ② 路径式链接（[[raw/x/y]] / [[a/b.md]]）
+    ⚠️ 2026-09-15：路径式链接是 Obsidian 合法写法，原实现只按文件名匹配 → 误报失效链接/红链"""
+    if target in pages or target in all_files:
+        return True
+    rel = target.replace("\\", "/").strip("/")
+    while rel.startswith("./"):
+        rel = rel[2:]
+    if "/" not in rel:
+        return False
+    p = Path(kb_root) / rel
+    if p.exists():
+        return True
+    return p.suffix == "" and p.with_suffix(".md").exists()
 
 
 def extract_updated(text):
@@ -53,7 +81,8 @@ def extract_updated(text):
 
 def check_broken_links(pages, kb_root=None):
     """wikilink 指向不存在的文件 → [(来源文件, 失效目标)]
-    目标可能指向非 md 资源（图片/附件），磁盘上存在同名文件就不算失效"""
+    目标可能指向非 md 资源（图片/附件），磁盘上存在同名文件就不算失效；
+    路径式链接按 KB 相对路径解析（2026-09-15 修复误报）"""
     broken = []
     kb_root = Path(kb_root) if kb_root else config.KB_ROOT
     # 收集磁盘上所有文件名（含非 md 资源：图片/附件），供链接判断
@@ -69,24 +98,36 @@ def check_broken_links(pages, kb_root=None):
             continue  # 导航/管理页（log 操作日志等）的链接不检查——流水账不是内容
         for m in WIKILINK_RE.finditer(page["text"]):
             target = m.group(1).strip()
-            if target and target not in pages and target not in all_files:
+            if not target:
+                continue
+            if len(target) < 2 or target in ("X", "x"):
+                continue  # 占位符（PRD 表格里的示例链接等），同 planner 信号2 口径（2026-09-15）
+            if not link_target_exists(target, pages, all_files, kb_root):
                 broken.append((name, target))
     return broken
 
 
 # ============ 规则2：孤立页面 ============
 
-def check_orphans(pages):
+def check_orphans(pages, kb_root=None):
     """内容页没有任何其他内容页链接它 → [页面名]
-    排除导航页（index/log/SCHEMA/IDEA）自身不算内容；导航页指向它的链接也不算入链"""
+    排除导航页（index/log/SCHEMA/IDEA）自身不算内容；导航页指向它的链接也不算入链；
+    路径式入链（[[concepts/x/y]]）也算入链（2026-09-15 修复误报）"""
+    kb_root = Path(kb_root) if kb_root else config.KB_ROOT
     linked = set()
     for name, page in pages.items():
         if name in NAV_PAGES:
             continue  # 导航页的链接不算"内容关联"
         for m in WIKILINK_RE.finditer(page["text"]):
             target = m.group(1).strip()
-            if target and target in pages:
+            if not target:
+                continue
+            if target in pages:
                 linked.add(target)
+            else:
+                rel = target.replace("\\", "/").strip("/")
+                if "/" in rel and Path(rel).stem in pages:
+                    linked.add(Path(rel).stem)
     orphans = [n for n in pages if n not in NAV_PAGES and n not in linked]
     return sorted(orphans)
 
@@ -94,7 +135,9 @@ def check_orphans(pages):
 # ============ 规则3：词典一致性（目录锚点 ↔ 正文条目） ============
 
 def check_dict_consistency(pages):
-    """学习概念词典：📑目录里的 [[#条目]] 必须对应正文 ### 条目
+    """学习概念词典：📑目录里的 [[#条目]] 必须对应正文条目
+    条目层级 = ####（现行结构 ## 大类 > ### 子组 > #### 概念，2026-08-22 定）；
+    兜底：正文没有任何 #### 时回退按 ### 检查（防词典再改结构时静默刷屏，2026-09-15）
     返回 (缺目录的条目, 目录里没有的死锚点)"""
     dict_page = None
     for name, page in pages.items():
@@ -116,8 +159,13 @@ def check_dict_consistency(pages):
 
     toc_anchors = {m.group(1).strip() for m in
                    re.finditer(r"\[\[#([^\]|]+)", toc_text)}
-    body_items = {m.group(1).strip() for m in
-                  re.finditer(r"^### (.+)$", body_text, re.M)}
+    body_h4 = {m.group(1).strip() for m in
+               re.finditer(r"^#### (.+)$", body_text, re.M)}
+    if body_h4:
+        body_items = body_h4
+    else:
+        body_items = {m.group(1).strip() for m in
+                      re.finditer(r"^### (.+)$", body_text, re.M)}
 
     missing = sorted(body_items - toc_anchors)      # 正文有条目但目录没链接
     dead = sorted(toc_anchors - body_items)         # 目录有链接但正文没条目
@@ -147,7 +195,7 @@ def run_health(kb_root=None):
     pages = collect_pages(kb_root)
 
     broken = check_broken_links(pages, kb_root)
-    orphans = check_orphans(pages)
+    orphans = check_orphans(pages, kb_root)
     dict_missing, dict_dead = check_dict_consistency(pages)
     stale = check_stale(pages)
 
