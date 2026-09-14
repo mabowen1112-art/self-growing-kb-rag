@@ -207,7 +207,8 @@ def init_tasks_table(conn):
 
 
 def save_tasks(tasks, source="planner", conn=None, meta_db=None):
-    """任务入库（去重：同 type+target 已有 pending/done 则跳过）。返回实际新增数"""
+    """任务入库（去重：同 type+target 已有 pending/draft/done 则跳过——draft=已起草待审，
+    2026-09-15 补：原先漏了 draft，导致同一页草稿已生成还会重复生成任务）。返回实际新增数"""
     own_conn = conn is None
     if own_conn:
         conn = sqlite3.connect(meta_db or config.META_DB)
@@ -217,7 +218,7 @@ def save_tasks(tasks, source="planner", conn=None, meta_db=None):
         added = 0
         for t in tasks:
             exists = conn.execute(
-                "SELECT 1 FROM tasks WHERE type=? AND target=? AND status IN ('pending','done')",
+                "SELECT 1 FROM tasks WHERE type=? AND target=? AND status IN ('pending','draft','done')",
                 (t["type"], t["target"])).fetchone()
             if exists:
                 continue

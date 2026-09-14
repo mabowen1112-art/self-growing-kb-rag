@@ -56,6 +56,14 @@ def test_save_dedup():
         added2 = planner.save_tasks(tasks, meta_db=meta_db)  # 重复跑
         assert added1 == 1 and added2 == 0, f"去重失败：{added1}/{added2}"
 
+        # draft（已起草待审）也要去重——2026-09-15 补：原先漏了 draft，已起草的页被重复生成任务
+        conn = sqlite3.connect(meta_db)
+        conn.execute("UPDATE tasks SET status='draft' WHERE target='年金.md'")
+        conn.commit()
+        conn.close()
+        added_draft = planner.save_tasks(tasks, meta_db=meta_db)
+        assert added_draft == 0, f"draft 状态应去重：{added_draft}"
+
         # done 的任务也去重；rejected 的可重新生成
         conn = sqlite3.connect(meta_db)
         conn.execute("UPDATE tasks SET status='rejected' WHERE target='年金.md'")
