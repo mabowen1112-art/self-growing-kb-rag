@@ -15,7 +15,15 @@ import config
 # 导航/管理页（不算内容，孤立页检测排除它们作为"入链来源"）
 NAV_PAGES = {"index", "log", "SCHEMA", "IDEA", "wikilink"}
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]*)(#[^\]|]*)?(\|[^\]]*)?\]\]")
+CODE_SPAN_RE = re.compile(r"`[^`\n]*`")          # 行内代码 `...`
+CODE_FENCE_RE = re.compile(r"```.*?```", re.S)    # 围栏代码块
 STALE_DAYS = 90  # updated 超过 90 天且被体检提醒
+
+
+def strip_code(text):
+    """剔除代码（围栏块 + 行内）后再找 wikilink：Obsidian 不把代码里的 [[..]] 当链接，
+    文档里的示例写法（`[[raw/x/y]]`）不该被当成真链接（2026-09-15）"""
+    return CODE_SPAN_RE.sub("", CODE_FENCE_RE.sub("", text))
 
 
 def collect_pages(kb_root=None):
@@ -96,7 +104,7 @@ def check_broken_links(pages, kb_root=None):
     for name, page in pages.items():
         if name in NAV_PAGES:
             continue  # 导航/管理页（log 操作日志等）的链接不检查——流水账不是内容
-        for m in WIKILINK_RE.finditer(page["text"]):
+        for m in WIKILINK_RE.finditer(strip_code(page["text"])):
             target = m.group(1).strip()
             if not target:
                 continue
@@ -118,7 +126,7 @@ def check_orphans(pages, kb_root=None):
     for name, page in pages.items():
         if name in NAV_PAGES:
             continue  # 导航页的链接不算"内容关联"
-        for m in WIKILINK_RE.finditer(page["text"]):
+        for m in WIKILINK_RE.finditer(strip_code(page["text"])):
             target = m.group(1).strip()
             if not target:
                 continue

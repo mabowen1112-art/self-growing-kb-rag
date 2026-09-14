@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 import requests
 
 import config
-from health_check import collect_pages, run_health, NAV_PAGES, WIKILINK_RE, link_target_exists
+from health_check import collect_pages, run_health, NAV_PAGES, WIKILINK_RE, link_target_exists, strip_code
 
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
     os.environ.pop(_k, None)
@@ -49,7 +49,7 @@ def collect_signals(kb_root=None):
     for name, page in pages.items():
         if name in NAV_PAGES:
             continue  # 导航页（log/IDEA）的红链是流水账，不算知识缺口
-        for m in WIKILINK_RE.finditer(page["text"]):
+        for m in WIKILINK_RE.finditer(strip_code(page["text"])):
             target = m.group(1).strip()
             if not target or link_target_exists(target, pages, disk_files, kb_root):
                 continue  # 存在（含路径式链接）不算缺口

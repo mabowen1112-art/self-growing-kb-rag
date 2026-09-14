@@ -106,6 +106,10 @@ def test_path_style_links():
         concepts.mkdir(parents=True)
         (concepts / "deep.md").write_text(
             "---\ntitle: deep\nupdated: 2026-09-01\n---\n\n# deep\n\n内容。\n", encoding="utf-8")
+        (tmp / "concepts" / "docs.md").write_text(
+            "---\ntitle: docs\nupdated: 2026-09-01\n---\n\n# docs\n\n"
+            "行内代码示例 `[[code/sample]]`，围栏示例：\n\n```\n[[code/block]]\n```\n\n"
+            "但真链接 [[code/real]] 要报。\n", encoding="utf-8")
         (tmp / "concepts" / "linker.md").write_text(
             "---\ntitle: linker\nupdated: 2026-09-01\n---\n\n# linker\n\n"
             "无扩展名路径 [[concepts/sub/deep]]、带扩展名路径 [[concepts/sub/deep.md]]、真死链 [[nope/missing]]。\n"
@@ -116,6 +120,8 @@ def test_path_style_links():
         assert ("linker", "nope/missing") in broken, f"真·路径死链应被发现：{broken}"
         assert not any(t.startswith("concepts/") for _s, t in broken), f"路径式链接误报：{broken}"
         assert not any(t in ("X", "x") for _s, t in broken), f"占位符 X 不应报失效：{broken}"
+        assert ("docs", "code/real") in broken, f"非代码的真链接仍要报：{broken}"
+        assert not any(t in ("code/sample", "code/block") for _s, t in broken), f"代码块内示例不应报失效：{broken}"
         orphans = hc.check_orphans(pages, tmp)
         assert "deep" not in orphans, f"被路径式链接的页不算孤立：{orphans}"
     finally:
