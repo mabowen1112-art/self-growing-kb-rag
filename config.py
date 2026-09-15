@@ -16,6 +16,7 @@ EXCLUDE_DIRS = ["raw/_草稿"]                  # AI起草的新笔记草稿区�
 
 # ---- AI 起草草稿目录（executor V2卡3）----
 DRAFT_DIR = KB_ROOT / "raw" / "_草稿"
+DRAFT_LIMIT = 10                             # 草稿区待审上限：达到后暂停自动起草（2026-09-15 用户要求，防积压看不过来）
 
 # ---- 支持的文件类型（多模态：md + pdf + docx + 图片OCR）----
 IMPORT_EXTS = [".md", ".pdf", ".docx", ".png", ".jpg", ".jpeg"]

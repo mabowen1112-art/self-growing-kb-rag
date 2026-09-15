@@ -137,6 +137,7 @@ def execute_deterministic(task, apply=False):
         if task["type"] == "fix_link":
             # 预览：算出要改什么但不写
             import re
+            from health_check import collect_pages, link_target_exists, WIKILINK_RE
             text = target_file.read_text(encoding="utf-8")
             detail = task["detail"]
             m = re.search(r"\[\[([^\]|]+)\]\]", detail)
@@ -145,10 +146,32 @@ def execute_deterministic(task, apply=False):
             if not m:
                 return None, "无法从 detail 提取修复目标"
             new_target = m.group(1).strip().removesuffix(".md")
-            old_m = re.search(r"\[\[([^\]|]+?)\]\]", text)
-            if not old_m:
-                return None, "文件里没有 wikilink"
-            old_target = old_m.group(1).strip()
+            # 旧目标 = 文件里第一个"真坏链"（占位符/锚点/能解析的/图片嵌入都不动）
+            # ⚠️ 2026-09-16 加固：原先盲取"文件第一个 wikilink"——实测把 PRD 表格里的示例 [[X]]
+            #    改成了别的页（改错位置）；找不到真坏链时宁可拒绝，交人工
+            kb = config.KB_ROOT
+            all_files = set()
+            for root, _, files in os.walk(kb):
+                if ".obsidian" in root or ".git" in root:
+                    continue
+                all_files.update(files)
+                all_files.update(Path(f).stem for f in files)
+            pages_all = collect_pages(kb)
+            old_target = None
+            for mm in WIKILINK_RE.finditer(text):
+                if mm.start() > 0 and text[mm.start() - 1] == "!":
+                    continue  # 图片/附件嵌入不是坏链
+                cand = mm.group(1).strip()
+                if not cand or "#" in cand or "://" in cand:
+                    continue
+                if len(cand) < 2 or cand in ("X", "x"):
+                    continue  # 占位符（含示例文字）
+                if link_target_exists(cand, pages_all, all_files, kb):
+                    continue  # 能解析的不是坏链
+                old_target = cand
+                break
+            if old_target is None:
+                return None, "文件里没有可修的坏链接（占位符/正常链接不算）——拒绝盲改，交人工"
             action = f"[[{old_target}]] → [[{new_target}]]"
             if not apply:
                 return action, "preview（--apply 才真改）"
@@ -248,8 +271,17 @@ def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False, deta
 
         print(f"{'⚡ 执行模式（会改文件）' if apply else '👀 dry-run 预览（--apply 才真改）'}"
               + (" · 仅高置信" if auto_safe else ""))
+
+        # 草稿上限（2026-09-15 用户要求）：待审草稿达到 DRAFT_LIMIT 后暂停起草，防积压
+        draft_dir = _draft_dir()
+        draft_count = len(list(draft_dir.glob("*.md"))) if draft_dir.exists() else 0
+        draft_budget = max(0, getattr(config, "DRAFT_LIMIT", 10) - draft_count)
+        if draft_budget <= 0:
+            print(f"⏸ 草稿区已满（{draft_count}/{getattr(config, 'DRAFT_LIMIT', 10)} 篇待审）——本次暂缓起草，先审草稿")
+
         done = 0
         skipped_low = 0
+        blocked_draft = 0
         processed = 0
         log_entries = []
         for task in tasks:
@@ -261,6 +293,13 @@ def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False, deta
                 if detail_sink is not None:
                     detail_sink.append({"id": task["id"], "type": task["type"], "target": task["target"],
                                         "confidence": task["confidence"], "outcome": "skipped_low"})
+                continue
+            if task["type"] == "new_knowledge" and draft_budget <= 0:
+                print(f"\n[{task['id']}] ⏸ new_knowledge → {task['target']}：草稿已满，暂缓起草（不占名额）")
+                blocked_draft += 1
+                if detail_sink is not None:
+                    detail_sink.append({"id": task["id"], "type": task["type"], "target": task["target"],
+                                        "confidence": task["confidence"], "outcome": "draft_blocked"})
                 continue
             processed += 1
             print(f"\n[{task['id']}] {task['type']} → {task['target']}（{task['confidence']}）")
@@ -293,6 +332,7 @@ def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False, deta
                                         "result": "草稿待审核（未进正式库）"})
                     done += 1
                     outcome = "drafted"
+                    draft_budget -= 1   # 每起草一篇扣一个名额（硬上限，绝不超过 DRAFT_LIMIT）
                 else:
                     outcome = "preview" if not apply else "noop"
             else:
@@ -306,6 +346,7 @@ def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False, deta
             print(f"\n📝 已写执行日志到知识库 log.md（{len(log_entries)} 条）")
         print(f"\n✅ 处理 {done}/{processed} 个任务"
               + (f"，低置信跳过 {skipped_low} 个（不占名额）" if auto_safe else "")
+              + (f"，草稿已满暂缓 {blocked_draft} 个（不占名额）" if blocked_draft else "")
               + ("（dry-run 未改任何文件）" if not apply else ""))
         return done
     finally:

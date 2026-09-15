@@ -63,6 +63,57 @@ def patch_config(monkeypatch):
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_fix_link_refuses_when_no_broken_link():
+    """加固（2026-09-16）：文件里只有正常链接/占位符时，fix_link 拒绝盲改（曾把 PRD 示例 [[X]] 改错位置）"""
+    import executor
+    f = TEST_TMP / "concepts" / "笔记B.md"
+    f.write_text("---\ntitle: 笔记B\n---\n\n# 笔记B\n\n正常 [[正确页面]]，占位符 [[X]]。\n",
+                 encoding="utf-8")
+    conn = executor._conn()
+    conn.execute("INSERT INTO tasks (type,target,detail,confidence,status) VALUES "
+                 "('fix_link','笔记B','应改为指向 [[正确页面]]','high','pending')")
+    conn.commit()
+    task = [t for t in executor.get_pending_tasks(conn) if t["target"] == "笔记B"][0]
+    action, result = executor.execute_deterministic(task, apply=True)
+    conn.close()
+    assert result != "ok", f"不该盲改：{result}"
+    content = f.read_text(encoding="utf-8")
+    assert "正常 [[正确页面]]" in content and "[[X]]" in content, "文件不应被改"
+
+
+def test_draft_limit_blocks_drafting(monkeypatch):
+    """草稿上限（2026-09-15 用户要求）：待审草稿达到 DRAFT_LIMIT 后暂停起草——
+    不占名额、任务保持 pending（清完草稿自动恢复）"""
+    import executor
+    monkeypatch.setattr(cfg, "DRAFT_LIMIT", 1)
+    cfg.DRAFT_DIR.mkdir(parents=True, exist_ok=True)
+    (cfg.DRAFT_DIR / "已有一篇.md").write_text("x", encoding="utf-8")   # 1 篇 = 已达上限
+
+    conn = sqlite3.connect(cfg.META_DB)
+    conn.execute("INSERT INTO tasks (type,target,detail,confidence,status) VALUES "
+                 "('new_knowledge','甲.md','d','high','pending')")
+    conn.execute("INSERT INTO tasks (type,target,detail,confidence,status) VALUES "
+                 "('new_knowledge','乙.md','d','high','pending')")
+    conn.commit()
+    conn.close()
+
+    called = []
+    monkeypatch.setattr(executor, "draft_new_page",
+                        lambda task, apply=False: called.append(task["target"]) or (task["target"], "草稿已生成"))
+
+    sink = []
+    done = executor.run_executor(apply=True, max_tasks=5, auto_safe=True, detail_sink=sink)
+    assert called == [], f"草稿已满不应再起草：{called}"
+    assert done == 1, f"只应处理 fix_link 1 个：{done}"
+    blocked = [x for x in sink if x["outcome"] == "draft_blocked"]
+    assert len(blocked) == 2, f"两个起草任务应被暂缓：{sink}"
+
+    conn = sqlite3.connect(cfg.META_DB)
+    st = conn.execute("SELECT COUNT(*) FROM tasks WHERE status='pending' AND type='new_knowledge'").fetchone()[0]
+    conn.close()
+    assert st == 3, f"被暂缓的任务应保持 pending（年金 low + 甲 + 乙）：{st}"
+
+
 def test_auto_safe_low_not_counted(monkeypatch):
     """auto_safe：低置信跳过不占 max_tasks 名额（2026-09-15 修复：队头低置信曾白占名额）"""
     import executor

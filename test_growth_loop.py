@@ -35,6 +35,9 @@ def test_digest_write_and_trim(monkeypatch):
         assert "测试页 → raw/_草稿/" in d, d
         assert "任务池 7" in d and "草稿 3 篇" in d and "体检 全绿" in d, d
         assert "低置信挂起 1 个" in d, d
+        assert "上限 10" in d, d
+        # 用户要求：摘要不要表情（2026-09-15）
+        assert not any(ch in d for ch in "🆕🔧📥🏥🗂👀"), d
 
         growth_loop.write_digest(d, keep=2)
         growth_loop.write_digest("## 第二轮", keep=2)

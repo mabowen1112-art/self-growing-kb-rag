@@ -98,26 +98,32 @@ DIGEST_NAME = "生长摘要.md"
 DIGEST_KEEP = 30
 
 
-def build_digest(result, details, pool_pending, draft_count, manual_count, elapsed, mode):
-    """拼本轮摘要（markdown，## 开头）。mode: 'auto' / 'apply' / 'preview'"""
+def build_digest(result, details, pool_pending, draft_count, manual_count, elapsed, mode,
+                 draft_limit=10):
+    """拼本轮摘要（markdown，## 开头；纯文字，不用表情）。mode: 'auto' / 'apply' / 'preview'"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     drafted = [d["target"].replace(".md", "") for d in details if d.get("outcome") == "drafted"]
     fixed = [d["target"] for d in details if d.get("outcome") == "fixed"]
     skipped_low = sum(1 for d in details if d.get("outcome") == "skipped_low")
+    blocked = sum(1 for d in details if d.get("outcome") == "draft_blocked")
     h = result["health"]
     if h["broken_links"] or h["orphans"] or h["dict_missing"]:
         health_line = f"失效 {len(h['broken_links'])} / 孤立 {len(h['orphans'])} / 词典 {len(h['dict_missing'])}"
     else:
         health_line = "全绿"
     mode_label = {"auto": "自动生长（auto-safe）", "apply": "生长（--apply）", "preview": "预览"}[mode]
+    todo = f"- 待你处理：草稿 {draft_count} 篇 / 上限 {draft_limit}（raw/_草稿/）｜ 人工任务 {manual_count} 个"
+    if skipped_low:
+        todo += f" ｜ 低置信挂起 {skipped_low} 个"
+    if blocked:
+        todo += f" ｜ 起草暂缓 {blocked} 篇（草稿已满）"
     lines = [
         f"## {now} · {mode_label} · 耗时 {elapsed:.0f}s",
-        f"- 🆕 起草新页：{('、'.join(drafted) + ' → raw/_草稿/') if drafted else '无'}",
-        f"- 🔧 自动处理：{('、'.join(fixed)) if fixed else '无'}",
-        f"- 📥 导入 {result['ingest']['added_notes']} 新 / {result['ingest']['changed_notes']} 变更"
-        f" ｜ 🏥 体检 {health_line} ｜ 🗂 任务池 {pool_pending}",
-        f"- 👀 待你处理：草稿 {draft_count} 篇（raw/_草稿/）｜ 人工任务 {manual_count} 个"
-        + (f" ｜ 低置信挂起 {skipped_low} 个" if skipped_low else ""),
+        f"- 起草新页：{('、'.join(drafted) + ' → raw/_草稿/') if drafted else '无'}",
+        f"- 自动处理：{('、'.join(fixed)) if fixed else '无'}",
+        f"- 导入 {result['ingest']['added_notes']} 新 / {result['ingest']['changed_notes']} 变更"
+        f" ｜ 体检 {health_line} ｜ 任务池 {pool_pending}",
+        todo,
     ]
     return "\n".join(lines) + "\n"
 
@@ -194,7 +200,7 @@ def run_loop(apply=False, max_tasks=5, auto_safe=False):
     draft_count = len(list(draft_dir.glob("*.md"))) if draft_dir.exists() else 0
     mode = "auto" if auto_safe else ("apply" if apply else "preview")
     digest = build_digest(summary_partial, details, pool_pending, draft_count,
-                          len(manual), elapsed, mode)
+                          len(manual), elapsed, mode, getattr(config, "DRAFT_LIMIT", 10))
     digest_written = None
     if apply or auto_safe:
         digest_written = write_digest(digest)
