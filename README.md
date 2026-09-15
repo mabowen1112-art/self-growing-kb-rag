@@ -29,7 +29,7 @@ E:\ai-learn\rag_kb\
 ├── ingest_scheduled.bat / growth_scheduled.bat   # 定时任务入口
 ├── install_scheduled_task.bat  # 注册 每日导入/每周生长循环（可关）
 ├── 使用说明.txt          # 用户使用说明（GBK，双击即看）
-└── test_*.py (12个)     # 39 测试全绿
+└── test_*.py (13个)     # 44 测试全绿
 ```
 
 ## 快速开始
@@ -50,7 +50,7 @@ uv run python planner.py                   # 规划器（列任务）
 uv run python review_sync.py               # 审核同步（拖拽感知）
 
 # 4. 全量测试
-uv run pytest                              # 39 passed
+uv run pytest                              # 44 passed
 ```
 
 ## 使用方式（详见 使用说明.txt）
@@ -101,7 +101,7 @@ schtasks /delete /tn <任务名> /f           # 删除
 - **防幻觉**：问答两层（📌资料+💡补充标注区分）；起草必须结合素材，硬数据不编造
 - **成本管控**：qa_cache 相同问题零费用；一次生长循环约 1 次规划 LLM 调用
 
-## 测试（39 passed）
+## 测试（44 passed）
 
 - V1：ingest 增量 / multimodal 多模态 / classify 分类 / api / rag / app / acceptance 验收
 - V2：health 体检 / planner 规划（假LLM注入+真实端到端）/ executor 执行（备份回滚+草稿）/ review_sync 拖拽同步 / growth_loop 闭环冒烟

@@ -11,7 +11,11 @@
 #   - 每题真实调 embedding + rerank + DeepSeek（不走 qa_cache，保证两次对比公平）
 #   - 一个要点 = 一组 "关键词|同义词"，回答里出现任一关键词即算命中（不区分大小写）
 #   - 单题失败不中断整轮（记录 error 继续跑）
-#   - 判分口径：综合通过 = 检索命中 + 来源标注 + 回答非空
+#   - 判分口径（v2，2026-09-16 加对抗题）：
+#       normal  综合通过 = 检索命中 + 来源标注 + 回答非空
+#       refusal 拒答题（库里没有）：通过 = 明说"没有" 或 明确标注 💡补充（不把库外内容冒充资料）
+#       multi   跨文档题：通过 = 至少命中 N 个不同预期文件（min_sources）
+#     （search 层走同一套 retrieve/answer，不改被测对象——本卡只"加尺子"）
 
 import argparse
 import datetime
@@ -42,7 +46,54 @@ def load_questions():
 
 
 def configured(item):
-    return bool(str(item.get("q") or "").strip()) and bool(str(item.get("source") or "").strip())
+    """可跑判定：拒答题只看题面；跨文档题看 sources；其余需要 q + source"""
+    if not str(item.get("q") or "").strip():
+        return False
+    check = item.get("check", "normal")
+    if check == "refusal":
+        return True
+    if check == "multi":
+        return bool(item.get("sources"))
+    return bool(str(item.get("source") or "").strip())
+
+
+NO_HITS_ANSWER = "📭 没检索到相关资料（阈值过滤），换个问法试试"   # 与 api.py 的返回一致（对齐用户实际看到的）
+
+REFUSAL_MARKERS = ["没检索到", "没有相关", "未收录", "知识库里没有", "没有找到", "未找到", "📭"]
+SUPPLEMENT_MARK = "💡"
+
+
+def judge_refusal(text):
+    """拒答题判定 → (ok, 说明)：明确说"库里没有" 或 明确标注💡补充（=没把库外内容冒充资料）"""
+    t = text or ""
+    if any(k in t for k in REFUSAL_MARKERS):
+        return True, "明说没有"
+    if SUPPLEMENT_MARK in t:
+        return True, "已标注💡补充"
+    return False, "未说明来源（疑似把库外内容当资料用）"
+
+
+def count_multi(need_list, hits, sources):
+    """跨文档题：命中几个不同的预期文件（看检索 hits 的来源 + 回答 sources）→ (n, 命中的文件名)"""
+    seen = set()
+    for _d, meta, _s in hits or []:
+        src = meta.get("source", "") or ""
+        for need in need_list or []:
+            if need in src:
+                seen.add(need)
+    for s in sources or []:
+        for need in need_list or []:
+            if need in (s or ""):
+                seen.add(need)
+    return len(seen), sorted(seen)
+
+
+def src_match(expect, sources):
+    """来源判定：expect 支持 字符串 或 列表（任一命中）"""
+    if not expect:
+        return True
+    exps = expect if isinstance(expect, list) else [expect]
+    return any(any(e in (s or "") for e in exps) for s in sources or [])
 
 
 def check_points(answer_text, points):
@@ -62,24 +113,37 @@ def run_questions(items):
     results = []
     t_all = time.time()
     for i, item in enumerate(items, 1):
-        qid, q, expect = item.get("id", f"q{i:02d}"), item["q"], item["source"]
-        rec = {"id": qid, "q": q, "source_expect": expect}
+        qid, q = item.get("id", f"q{i:02d}"), item["q"]
+        check = item.get("check", "normal")
+        expect = item.get("source") or ""
+        rec = {"id": qid, "q": q, "check": check, "source_expect": expect}
         t0 = time.time()
         try:
             hits = retrieve(q)
-            rec["hit_ok"] = any(expect in h[1]["source"] for h in hits) if hits else False
+            rec["hit_ok"] = any(expect in h[1]["source"] for h in hits) if (hits and expect) else False
             if hits:
                 text, sources = answer(q, hits)
             else:
-                text, sources = "", []
-            rec["src_ok"] = any(expect in s for s in sources)
-            rec["passed"] = bool(text) and rec["hit_ok"] and rec["src_ok"]
+                text, sources = NO_HITS_ANSWER, []   # 与 api.py 一致：没检索到会明确回复
+            rec["src_ok"] = src_match(expect, sources)
+            rec["sources"] = sources
+            if check == "refusal":
+                ok, why = judge_refusal(text)
+                rec["refusal_ok"], rec["refusal_why"] = ok, why
+                rec["passed"] = ok
+            elif check == "multi":
+                need = count_multi(item.get("sources") or [], hits, sources)
+                rec["multi_hit"], rec["multi_which"] = need
+                rec["multi_need"] = int(item.get("min_sources", 2))
+                rec["passed"] = bool(text) and need[0] >= rec["multi_need"]
+            else:
+                rec["passed"] = bool(text) and rec["hit_ok"] and rec["src_ok"]
             pts = check_points(text, item.get("points"))
             rec["points"] = pts
             rec["pts_hit"] = sum(1 for x in pts if x["ok"])
             rec["pts_total"] = len(pts)
-            rec["sources"] = sources
             rec["answer_head"] = (text or "")[:160]
+            rec["answer"] = text or ""      # 存全文（对抗题分析要看完整回答）
         except Exception as e:
             rec.update({"hit_ok": False, "src_ok": False, "passed": False,
                         "points": [], "pts_hit": 0, "pts_total": 0,
@@ -88,8 +152,15 @@ def run_questions(items):
         results.append(rec)
 
         pts_s = f"要点 {rec['pts_hit']}/{rec['pts_total']}" if rec["pts_total"] else "要点 未配置"
+        if rec.get("check") == "refusal":
+            verdict = f"拒答{'✅' if rec.get('refusal_ok') else '❌'}（{rec.get('refusal_why', '')}）"
+        elif rec.get("check") == "multi":
+            verdict = (f"跨文档 {rec.get('multi_hit', 0)}/{rec.get('multi_need', 2)}"
+                       f"{'✅' if rec.get('passed') else '❌'}（{'、'.join(rec.get('multi_which', [])) or '无命中'}）")
+        else:
+            verdict = f"检索{'✅' if rec['hit_ok'] else '❌'} 来源{'✅' if rec['src_ok'] else '❌'}"
         line = (f"[{i}/{len(items)}] {qid} {q} → "
-                f"检索{'✅' if rec['hit_ok'] else '❌'} 来源{'✅' if rec['src_ok'] else '❌'} {pts_s}（{rec['elapsed_s']}s）")
+                f"{verdict} {pts_s}（{rec['elapsed_s']}s）")
         if rec.get("error"):
             line += f"  ⚠️ {rec['error'][:80]}"
         print(line)
@@ -200,6 +271,13 @@ def main():
         print(f"📊 要点覆盖：{pts_hit}/{pts_total}（{summary['pts_pct']}%）")
     else:
         print("📊 要点覆盖：还没有配置要点（去 eval_questions.yaml 填 points）")
+    by_check = {}
+    for r in results:
+        m = r.get("check", "normal")
+        by_check.setdefault(m, [0, 0])
+        by_check[m][0] += 1 if r["passed"] else 0
+        by_check[m][1] += 1
+    print("📊 分模式通过：" + " ｜ ".join(f"{m} {ok}/{tot}" for m, (ok, tot) in by_check.items()))
     errs = sum(1 for r in results if r.get("error"))
     if errs:
         print(f"⚠️ 有 {errs} 题出错（见结果文件 error 字段）")
