@@ -233,9 +233,11 @@ summary: 一句话摘要
 
 # ============ 主入口 ============
 
-def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False):
+def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False, detail_sink=None):
     """执行器。apply=True 真执行；auto_safe=True 时只自动执行高置信任务
-    （安全模式：自动跑生长循环用——🔴high 的 new_knowledge/fix_link 自动做，🟡low 挂起留人工）"""
+    （安全模式：自动跑生长循环用——🔴high 的 new_knowledge/fix_link 自动做，🟡low 挂起留人工）
+    2026-09-15 修复：auto_safe 下低置信跳过**不占 max_tasks 名额**（原先 5 个名额被队头低置信白占）
+    detail_sink：可选 list，逐条记录本轮明细 [{id,type,target,confidence,outcome,...}]（供生长摘要）"""
     conn = _conn()
     try:
         types = None if only_type is None else [only_type]
@@ -248,17 +250,25 @@ def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False):
               + (" · 仅高置信" if auto_safe else ""))
         done = 0
         skipped_low = 0
+        processed = 0
         log_entries = []
-        for task in tasks[:max_tasks]:
-            # auto_safe：低置信任务不自动处理（挂起等人工）
+        for task in tasks:
+            if processed >= max_tasks:
+                break
             if auto_safe and task["confidence"] != "high":
-                print(f"\n[{task['id']}] 🟡 {task['type']} → {task['target']}（低置信，跳过等人工）")
+                print(f"\n[{task['id']}] 🟡 {task['type']} → {task['target']}（低置信，跳过等人工·不占名额）")
                 skipped_low += 1
+                if detail_sink is not None:
+                    detail_sink.append({"id": task["id"], "type": task["type"], "target": task["target"],
+                                        "confidence": task["confidence"], "outcome": "skipped_low"})
                 continue
+            processed += 1
             print(f"\n[{task['id']}] {task['type']} → {task['target']}（{task['confidence']}）")
             print(f"   detail: {task['detail'][:100]}")
+            outcome, note = "noop", ""
             if task["type"] in AUTO_TYPES:
                 action, result = execute_deterministic(task, apply=apply)
+                note = result
                 print(f"   {result}")
                 if result == "ok" and action:
                     log_entries.append({"task_type": task["type"], "target": task["target"],
@@ -266,10 +276,15 @@ def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False):
                     if apply:
                         set_task_status(conn, task["id"], "done")
                     done += 1
+                    outcome = "fixed"
                 elif apply and result != "ok":
                     print(f"   ⚠️ 跳过（不自动改，留给人工）：{result}")
+                    outcome = "refused"
+                else:
+                    outcome = "preview"
             elif task["type"] == "new_knowledge":
                 name, result = draft_new_page(task, apply=apply)
+                note = result
                 print(f"   {result}")
                 if apply and "草稿已生成" in result:
                     set_task_status(conn, task["id"], "draft")
@@ -277,14 +292,20 @@ def run_executor(apply=False, only_type=None, max_tasks=5, auto_safe=False):
                                         "action": f"起草新页 → raw/_草稿/{name}.md",
                                         "result": "草稿待审核（未进正式库）"})
                     done += 1
+                    outcome = "drafted"
+                else:
+                    outcome = "preview" if not apply else "noop"
             else:
                 print(f"   ⚠️ 类型 {task['type']} 无执行器，跳过")
+            if detail_sink is not None:
+                detail_sink.append({"id": task["id"], "type": task["type"], "target": task["target"],
+                                    "confidence": task["confidence"], "outcome": outcome, "note": note[:120]})
 
         if log_entries:
             append_execution_log(log_entries, dry_run=not apply)
             print(f"\n📝 已写执行日志到知识库 log.md（{len(log_entries)} 条）")
-        print(f"\n✅ 处理 {done}/{min(len(tasks), max_tasks)} 个任务"
-              + (f"，低置信跳过 {skipped_low} 个" if auto_safe else "")
+        print(f"\n✅ 处理 {done}/{processed} 个任务"
+              + (f"，低置信跳过 {skipped_low} 个（不占名额）" if auto_safe else "")
               + ("（dry-run 未改任何文件）" if not apply else ""))
         return done
     finally:

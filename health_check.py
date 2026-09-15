@@ -13,7 +13,7 @@ from pathlib import Path
 import config
 
 # 导航/管理页（不算内容，孤立页检测排除它们作为"入链来源"）
-NAV_PAGES = {"index", "log", "SCHEMA", "IDEA", "wikilink"}
+NAV_PAGES = {"index", "log", "SCHEMA", "IDEA", "wikilink", "生长摘要"}
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]*)(#[^\]|]*)?(\|[^\]]*)?\]\]")
 CODE_SPAN_RE = re.compile(r"`[^`\n]*`")          # 行内代码 `...`
 CODE_FENCE_RE = re.compile(r"```.*?```", re.S)    # 围栏代码块

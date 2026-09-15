@@ -63,6 +63,34 @@ def patch_config(monkeypatch):
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_auto_safe_low_not_counted(monkeypatch):
+    """auto_safe：低置信跳过不占 max_tasks 名额（2026-09-15 修复：队头低置信曾白占名额）"""
+    import executor
+    conn = sqlite3.connect(cfg.META_DB)
+    # 现有：1 高 fix_link + 1 低 new_knowledge；再加 2 个高 new_knowledge
+    conn.execute("INSERT INTO tasks (type, target, detail, confidence, status) VALUES "
+                 "('new_knowledge', '高页1.md', 'd', 'high', 'pending')")
+    conn.execute("INSERT INTO tasks (type, target, detail, confidence, status) VALUES "
+                 "('new_knowledge', '高页2.md', 'd', 'high', 'pending')")
+    conn.commit()
+    conn.close()
+
+    calls = []
+
+    def fake_draft(task, apply=False):
+        calls.append(task["target"])
+        return task["target"].replace(".md", ""), "草稿已生成 → raw/_草稿/（测试）"
+
+    monkeypatch.setattr(executor, "draft_new_page", fake_draft)
+
+    sink = []
+    done = executor.run_executor(apply=True, max_tasks=2, auto_safe=True, detail_sink=sink)
+    assert done == 2, f"max=2 应处理 2 个高置信（低置信不占名额）：{done}"
+    assert calls == ["高页1.md"], f"第 1 个高置信 fix_link 之后应轮到高页1：{calls}"
+    outcomes = [x["outcome"] for x in sink]
+    assert outcomes == ["fixed", "skipped_low", "drafted"], outcomes
+
+
 def test_fix_link_dry_run_no_write():
     """dry-run 不改文件"""
     import executor

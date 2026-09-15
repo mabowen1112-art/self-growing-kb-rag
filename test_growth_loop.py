@@ -9,10 +9,43 @@ import growth_loop
 
 
 def test_steps_exist():
-    """6 个步骤函数都存在"""
+    """步骤函数都存在（⑥ 矛盾复核 + ⑦ 生长摘要）"""
     for fn in ["step_ingest", "step_health", "step_planner",
-               "step_executor", "step_review_sync", "step_contested"]:
+               "step_executor", "step_review_sync", "step_contested",
+               "build_digest", "write_digest"]:
         assert hasattr(growth_loop, fn), f"缺少步骤函数 {fn}"
+
+
+def test_digest_write_and_trim(monkeypatch):
+    """《生长摘要》：内容正确、最新在上、超 keep 条裁剪（P1 2026-09-15，纯本地零费用）"""
+    import shutil
+    import tempfile
+    import config as cfg
+    tmp = Path(tempfile.mkdtemp(prefix="digest_test_"))
+    try:
+        monkeypatch.setattr(cfg, "KB_ROOT", tmp)
+        result = {"ingest": {"added_notes": 1, "changed_notes": 2,
+                             "added_chunks": 3, "removed_chunks": 0},
+                  "health": {"broken_links": [], "orphans": [], "dict_missing": []}}
+        details = [{"id": 1, "type": "new_knowledge", "target": "测试页.md",
+                    "confidence": "high", "outcome": "drafted"},
+                   {"id": 2, "type": "new_knowledge", "target": "低置信页.md",
+                    "confidence": "low", "outcome": "skipped_low"}]
+        d = growth_loop.build_digest(result, details, 7, 3, 0, 12.3, "auto")
+        assert "测试页 → raw/_草稿/" in d, d
+        assert "任务池 7" in d and "草稿 3 篇" in d and "体检 全绿" in d, d
+        assert "低置信挂起 1 个" in d, d
+
+        growth_loop.write_digest(d, keep=2)
+        growth_loop.write_digest("## 第二轮", keep=2)
+        growth_loop.write_digest("## 第三轮", keep=2)
+        text = (tmp / growth_loop.DIGEST_NAME).read_text(encoding="utf-8")
+        assert "title: 生长摘要" in text
+        assert text.index("第三轮") < text.index("第二轮"), "最新应在上"
+        assert "测试页" not in text, "超 keep 条应被裁掉"
+        assert text.count("\n## ") == 2, f"应只保留 2 条：{text}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def test_step_health_preview():

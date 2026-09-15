@@ -2,6 +2,7 @@
 # 运行：uv run python growth_loop.py            # 完整循环（执行器只预览）
 #       uv run python growth_loop.py --apply    # 完整循环 + 高置信任务自动执行
 # 流程：① 增量导入 → ② 体检 → ③ 规划器 → ④ 执行器 → ⑤ 审核同步 → ⑥ 矛盾复核 → 总结
+#      + ⑦ 写《生长摘要》（知识库根目录，P1 2026-09-15：让"系统干了什么"看得见）
 # 每步都复用已有模块（ingest/health_check/planner/executor/review_sync），本文件只做编排
 
 import argparse
@@ -44,13 +45,14 @@ def step_planner():
     return added
 
 
-def step_executor(apply: bool, max_tasks: int, auto_safe: bool = False):
+def step_executor(apply: bool, max_tasks: int, auto_safe: bool = False, detail_sink=None):
     """④ 执行器：按任务干活（默认预览；--apply 才执行；--auto-safe 只做高置信）"""
     print("\n" + "=" * 50)
     print(f"④ 执行器（{'自动执行·仅高置信' if auto_safe else '自动执行' if apply else '预览，--apply 才执行'}）")
     print("=" * 50)
     import executor
-    return executor.run_executor(apply=apply, max_tasks=max_tasks, auto_safe=auto_safe)
+    return executor.run_executor(apply=apply, max_tasks=max_tasks, auto_safe=auto_safe,
+                                 detail_sink=detail_sink)
 
 
 def step_review_sync():
@@ -92,6 +94,55 @@ def step_contested():
     return found
 
 
+DIGEST_NAME = "生长摘要.md"
+DIGEST_KEEP = 30
+
+
+def build_digest(result, details, pool_pending, draft_count, manual_count, elapsed, mode):
+    """拼本轮摘要（markdown，## 开头）。mode: 'auto' / 'apply' / 'preview'"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    drafted = [d["target"].replace(".md", "") for d in details if d.get("outcome") == "drafted"]
+    fixed = [d["target"] for d in details if d.get("outcome") == "fixed"]
+    skipped_low = sum(1 for d in details if d.get("outcome") == "skipped_low")
+    h = result["health"]
+    if h["broken_links"] or h["orphans"] or h["dict_missing"]:
+        health_line = f"失效 {len(h['broken_links'])} / 孤立 {len(h['orphans'])} / 词典 {len(h['dict_missing'])}"
+    else:
+        health_line = "全绿"
+    mode_label = {"auto": "自动生长（auto-safe）", "apply": "生长（--apply）", "preview": "预览"}[mode]
+    lines = [
+        f"## {now} · {mode_label} · 耗时 {elapsed:.0f}s",
+        f"- 🆕 起草新页：{('、'.join(drafted) + ' → raw/_草稿/') if drafted else '无'}",
+        f"- 🔧 自动处理：{('、'.join(fixed)) if fixed else '无'}",
+        f"- 📥 导入 {result['ingest']['added_notes']} 新 / {result['ingest']['changed_notes']} 变更"
+        f" ｜ 🏥 体检 {health_line} ｜ 🗂 任务池 {pool_pending}",
+        f"- 👀 待你处理：草稿 {draft_count} 篇（raw/_草稿/）｜ 人工任务 {manual_count} 个"
+        + (f" ｜ 低置信挂起 {skipped_low} 个" if skipped_low else ""),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def write_digest(block_md, keep=DIGEST_KEEP):
+    """把本轮摘要写到《生长摘要》最上面（保留最近 keep 条）→ 返回写入路径"""
+    path = config.KB_ROOT / DIGEST_NAME
+    header = ("---\ntitle: 生长摘要\ntype: log\ndomain: general\n"
+              "tags: [生长循环, 自动生成]\n"
+              "summary: 每轮生长循环的自动摘要（最新在上）；草稿在 raw/_草稿/ 里待审\n---\n\n"
+              "# 生长摘要（自动生成 · 最新在上）\n\n"
+              f"> 每轮生长循环结束后自动更新，保留最近 {keep} 条；「待你处理」的草稿在 raw/_草稿/ 里。\n\n")
+    blocks = []
+    if path.exists():
+        old = path.read_text(encoding="utf-8")
+        blocks = [p for p in old.split("\n## ")[1:] if p.strip()]
+    block = block_md.strip()
+    if block.startswith("## "):
+        block = block[3:]
+    blocks = [block] + blocks
+    blocks = blocks[:keep]
+    path.write_text(header + "\n\n".join("## " + b for b in blocks), encoding="utf-8")
+    return path
+
+
 def run_loop(apply=False, max_tasks=5, auto_safe=False):
     """完整生长循环 → 总结"""
     t0 = datetime.now()
@@ -100,7 +151,8 @@ def run_loop(apply=False, max_tasks=5, auto_safe=False):
     s1 = step_ingest(apply)
     r2 = step_health()
     added_tasks = step_planner()
-    done_exec = step_executor(apply, max_tasks, auto_safe)
+    details = []
+    done_exec = step_executor(apply, max_tasks, auto_safe, details)
     s5 = step_review_sync()
     s6 = step_contested()
 
@@ -129,10 +181,30 @@ def run_loop(apply=False, max_tasks=5, auto_safe=False):
             print(f"     [{mid}] {mtype} → {mtarget}")
     elapsed = (datetime.now() - t0).total_seconds()
     print(f"\n⏱️ 本轮耗时 {elapsed:.1f}s")
+
+    # ⑦ 生长摘要（P1，2026-09-15）：真跑时写入知识库根目录《生长摘要.md》；预览只打印
+    summary_partial = {"ingest": s1, "health": r2}
+    conn = sqlite3.connect(config.META_DB)
+    try:
+        pool_pending = conn.execute("SELECT COUNT(*) FROM tasks WHERE status='pending'").fetchone()[0]
+    except sqlite3.OperationalError:
+        pool_pending = 0
+    conn.close()
+    draft_dir = config.KB_ROOT / "raw" / "_草稿"
+    draft_count = len(list(draft_dir.glob("*.md"))) if draft_dir.exists() else 0
+    mode = "auto" if auto_safe else ("apply" if apply else "preview")
+    digest = build_digest(summary_partial, details, pool_pending, draft_count,
+                          len(manual), elapsed, mode)
+    digest_written = None
+    if apply or auto_safe:
+        digest_written = write_digest(digest)
+        print(f"\n📮 已写《{DIGEST_NAME}》（知识库根目录，手机同步后也能看）")
+    else:
+        print("\n📮 预览模式：摘要未落盘（--apply / --auto-safe 时自动写《生长摘要》）")
     print("🌱 ========== 生长循环结束 ==========")
     return {"ingest": s1, "health": r2, "tasks_added": added_tasks,
             "executed": done_exec, "review": s5, "contested": len(s6),
-            "manual_tasks": len(manual)}
+            "manual_tasks": len(manual), "digest_written": str(digest_written) if digest_written else None}
 
 
 if __name__ == "__main__":
