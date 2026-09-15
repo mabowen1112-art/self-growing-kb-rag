@@ -25,7 +25,7 @@ E:\ai-learn\rag_kb\
 ├── kb_meta.db           # SQLite：notes + tasks 任务表 + task_undo 备份
 ├── 启动知识库问答.bat    # 问答界面（后端8100+前端8501，自动开浏览器）
 ├── 手动导入.bat          # 立即增量导入
-├── 手动生长循环.bat      # 一键跑完整生长循环（默认预览）
+├── 手动生长循环.bat      # 菜单式一键生长循环（1 预览 / 2 自动高置信）
 ├── ingest_scheduled.bat / growth_scheduled.bat   # 定时任务入口
 ├── install_scheduled_task.bat  # 注册 每日导入/每周生长循环（可关）
 ├── 使用说明.txt          # 用户使用说明（GBK，双击即看）
@@ -39,7 +39,7 @@ E:\ai-learn\rag_kb\
 双击 启动知识库问答.bat
 
 # 2. 一键生长循环（导入→体检→规划→执行预览→审核同步→总结）
-双击 手动生长循环.bat          # 或：uv run python growth_loop.py
+双击 手动生长循环.bat          # 菜单：1 预览 / 2 自动高置信；或 uv run python growth_loop.py
 #    自动执行高置信任务（改前备份，可回滚）：
 uv run python growth_loop.py --apply
 
