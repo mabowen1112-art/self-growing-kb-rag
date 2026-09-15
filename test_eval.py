@@ -14,8 +14,11 @@ def test_judge_refusal():
     ok, why = eval_kb.judge_refusal(eval_kb.NO_HITS_ANSWER)
     assert ok and "没有" in why
     # 明确标注 💡补充 → 通过（设计允许：AI 通用知识必须标出来）
-    ok, why = eval_kb.judge_refusal("【📌 资料层】库里没有直接内容\n【💡 补充层】这本书讲了……")
+    ok, why = eval_kb.judge_refusal("【📌 资料层】库里没有直接内容\n【💡 补充层】这是通用知识……")
     assert ok and "补充" in why
+    # 拧紧（2026-09-16）：裸 💡 符号不算，必须明确标注"补充"
+    ok, _why = eval_kb.judge_refusal("费马大定理由怀尔斯证明。💡")
+    assert not ok, "裸 💡 不应通过"
     # 直接编造、不标来源 → 失败
     ok, why = eval_kb.judge_refusal("费马大定理由安德鲁·怀尔斯于 1994 年证明。")
     assert not ok

@@ -60,7 +60,9 @@ def configured(item):
 NO_HITS_ANSWER = "📭 没检索到相关资料（阈值过滤），换个问法试试"   # 与 api.py 的返回一致（对齐用户实际看到的）
 
 REFUSAL_MARKERS = ["没检索到", "没有相关", "未收录", "知识库里没有", "没有找到", "未找到", "📭"]
-SUPPLEMENT_MARK = "💡"
+# 2026-09-16 拧紧：必须是"明确标注为补充"（含"补充"二字），裸 💡 符号不算——
+# 防"编造内容 + 随手加个💡"就能过判分
+SUPPLEMENT_MARKS = ["💡 补充", "💡补充"]
 
 
 def judge_refusal(text):
@@ -68,9 +70,9 @@ def judge_refusal(text):
     t = text or ""
     if any(k in t for k in REFUSAL_MARKERS):
         return True, "明说没有"
-    if SUPPLEMENT_MARK in t:
+    if any(k in t for k in SUPPLEMENT_MARKS):
         return True, "已标注💡补充"
-    return False, "未说明来源（疑似把库外内容当资料用）"
+    return False, "未说明来源或未标注补充（疑似把库外内容当资料用）"
 
 
 def count_multi(need_list, hits, sources):
@@ -136,6 +138,11 @@ def run_questions(items):
                 rec["multi_hit"], rec["multi_which"] = need
                 rec["multi_need"] = int(item.get("min_sources", 2))
                 rec["passed"] = bool(text) and need[0] >= rec["multi_need"]
+                # 检索面独立指标（2026-09-16）：只记录"拉到了几个预期课节页"，不参与判定
+                strict = item.get("sources_strict") or []
+                if strict:
+                    rec["strict_hit"], rec["strict_which"] = count_multi(strict, hits, sources)
+                    rec["strict_total"] = len(strict)
             else:
                 rec["passed"] = bool(text) and rec["hit_ok"] and rec["src_ok"]
             pts = check_points(text, item.get("points"))
@@ -157,6 +164,8 @@ def run_questions(items):
         elif rec.get("check") == "multi":
             verdict = (f"跨文档 {rec.get('multi_hit', 0)}/{rec.get('multi_need', 2)}"
                        f"{'✅' if rec.get('passed') else '❌'}（{'、'.join(rec.get('multi_which', [])) or '无命中'}）")
+            if rec.get("strict_total"):
+                verdict += f"｜检索面 {rec.get('strict_hit', 0)}/{rec['strict_total']}"
         else:
             verdict = f"检索{'✅' if rec['hit_ok'] else '❌'} 来源{'✅' if rec['src_ok'] else '❌'}"
         line = (f"[{i}/{len(items)}] {qid} {q} → "
