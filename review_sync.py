@@ -39,14 +39,29 @@ def draft_tasks(conn):
 
 
 def find_file_anywhere(filename: str):
-    """在正式目录（排除 raw/_草稿）找文件 → Path 或 None"""
+    """在正式目录找文件（排除草稿区 + 所有以 . 开头的目录：.trash/.obsidian/.git…）
+    ⚠️ 2026-09-16：原先只排除 .obsidian/.git——若 Obsidian 用库内回收站（.trash），
+    删掉的草稿会被"找到"→ 误判 approved；现在隐藏目录一律不算"正式目录"。"""
     kb = config.KB_ROOT
-    for root, _, files in os.walk(kb):
-        if ".obsidian" in root or ".git" in root or "_草稿" in root:
+    for root, dirs, files in os.walk(kb):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if "_草稿" in root:
+            dirs[:] = []
             continue
         if filename in files:
             return Path(root) / filename
     return None
+
+
+def draft_still_present(page_name: str) -> bool:
+    """草稿是否还在草稿区（含子目录——用户把草稿挪进 _草稿 的子文件夹也算"未动"）"""
+    d = config.DRAFT_DIR
+    if not d.exists():
+        return False
+    target = f"{page_name}.md"
+    if (d / target).exists():
+        return True
+    return any(p.name == target for p in d.rglob("*.md"))
 
 
 def parse_frontmatter_text(abs_path: Path):
@@ -173,10 +188,9 @@ def sync_reviews():
     try:
         for task_id, ttype, target, status in draft_tasks(conn):
             page_name = Path(target).stem
-            draft_path = config.DRAFT_DIR / f"{page_name}.md"
 
-            if draft_path.exists():
-                stats["untouched"] += 1  # 还在草稿区，没动
+            if draft_still_present(page_name):
+                stats["untouched"] += 1  # 还在草稿区（含子文件夹），没动
                 continue
 
             # 草稿不在了 → 查去向

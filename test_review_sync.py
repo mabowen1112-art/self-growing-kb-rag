@@ -114,6 +114,41 @@ def test_promotion_autofinish():
     assert idx.index("[[笔记D]]") < idx.index("## 💡 个人通用"), "不应插到个人通用段"
 
 
+def test_move_to_new_folder_still_approved():
+    """用户新建文件夹再拖进去 → 照样认定 approved（2026-09-16 验证）"""
+    import review_sync
+    new_dir = TEST_TMP / "concepts" / "新文件夹"
+    new_dir.mkdir(parents=True)
+    shutil.move(TEST_TMP / "raw" / "_草稿" / "笔记A.md", new_dir / "笔记A.md")
+    stats = review_sync.sync_reviews()
+    assert stats["approved"] == 1, f"拖进新文件夹应算通过：{stats}"
+    conn = sqlite3.connect(cfg.META_DB)
+    st = conn.execute("SELECT status FROM tasks WHERE target='笔记A.md'").fetchone()[0]
+    conn.close()
+    assert st == "approved", st
+
+
+def test_trash_is_rejected_and_draft_subfolder_untouched():
+    """① 删到库内回收站 .trash → 算拒绝（不算"正式目录找到"）
+       ② 草稿挪进 _草稿 的子文件夹 → 算未动（不误判拒绝）"""
+    import review_sync
+    (TEST_TMP / ".trash").mkdir()
+    shutil.move(TEST_TMP / "raw" / "_草稿" / "笔记B.md", TEST_TMP / ".trash" / "笔记B.md")
+    sub = TEST_TMP / "raw" / "_草稿" / "备份"
+    sub.mkdir()
+    shutil.move(TEST_TMP / "raw" / "_草稿" / "笔记C.md", sub / "笔记C.md")
+
+    stats = review_sync.sync_reviews()
+    assert stats["rejected"] == 1, f".trash 里的草稿应算拒绝：{stats}"
+    # 未动 = A（原地）+ C（_草稿 子文件夹）+ D（原地）
+    assert stats["untouched"] == 3, f"草稿区子文件夹应算未动：{stats}"
+    conn = sqlite3.connect(cfg.META_DB)
+    st = dict(conn.execute("SELECT target, status FROM tasks").fetchall())
+    conn.close()
+    assert st["笔记B.md"] == "rejected", st
+    assert st["笔记C.md"] == "draft", st
+
+
 def test_idempotent():
     """幂等：approved/rejected 的任务不再被处理"""
     import review_sync
