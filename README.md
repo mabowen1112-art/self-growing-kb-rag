@@ -87,6 +87,7 @@ schtasks /delete /tn <任务名> /f           # 删除
   ⑦ 回答分两层：📌资料层（忠实知识库+标来源）/ 💡补充层（AI通用知识，标注区分不混淆）
   ⑧ 缓存：qa_cache.json 相同问题零费用秒回；限流 60秒10次
   ⑨ 防幻觉：没检索到 → 明确提示不编造（测试锁死：埃菲尔铁塔类问题必须拒绝）
+  ⑩ 两段式前端（P5 2026-09-16）：先 /api/retrieve 亮资料块（约 1s）→ /api/ask 复用检索结果生成（不重复检索）
 ```
 
 关键参数集中在 `config.py`：`RETRIEVE_TOP=30 / RETRIEVE_MAX_DISTANCE=0.75 / RERANK_K=7 / RERANK_MIN_SCORE=0.25`（后两个为 2026-09-11 调优值）

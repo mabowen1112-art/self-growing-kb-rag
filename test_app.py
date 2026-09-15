@@ -62,4 +62,7 @@ def test_app_answers(monkeypatch):
     captions = " ".join(c.value for c in at.caption)
     assert "来源" in captions, f"没有来源标注：{captions[:200]}"
 
-    print("✅ app.py 界面测试通过（mock 后端）：能提问、能回答、有来源标注")
+    # P5（2026-09-16）：两段式——第 1 步先亮资料块的提示
+    assert "检索到" in captions, f"缺少第 1 步检索提示：{captions[:200]}"
+
+    print("✅ app.py 界面测试通过（mock 后端）：能提问、能回答、有来源标注、两段式提示")

@@ -41,4 +41,21 @@ def test_api():
     r = client.post("/api/ask", json={"question": "   "})
     assert r.status_code == 400, f"空问题应 400：{r.status_code}"
 
-    print("✅ test_api 通过：health/stats/ask带来源/空问题400 全正常")
+    # ⑤ P5（2026-09-16）：两段式——/api/retrieve 只检索不生成 + /api/ask 复用第 1 步检索结果
+    r = client.post("/api/retrieve", json={"question": "复利是什么？"})
+    assert r.status_code == 200, r.text
+    hits = r.json()["hits"]
+    assert hits and all("source" in h and "heading" in h and "score" in h for h in hits), hits
+
+    r2 = client.post("/api/ask", json={"question": "复利是什么？", "reuse_last_retrieval": True})
+    assert r2.status_code == 200 and r2.json()["answer"], r2.text
+
+    # 复用时问题不匹配 → 回退为重新检索（不报错）
+    r3 = client.post("/api/ask", json={"question": "定投是什么？", "reuse_last_retrieval": True})
+    assert r3.status_code == 200 and r3.json()["answer"], r3.text
+
+    # /api/retrieve 空问题 → 400
+    r4 = client.post("/api/retrieve", json={"question": "  "})
+    assert r4.status_code == 400, r4.status_code
+
+    print("✅ test_api 通过：health/stats/ask/reuse_last_retrieval/retrieve/空问题400 全正常")

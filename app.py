@@ -72,25 +72,41 @@ if st.button("提问", type="primary"):
         st.warning("先输入问题哦")
     else:
         st.session_state.ask_times.append(now)
-        data, err = api_post("/api/ask", {"question": question})
+
+        # P5（2026-09-16）两段式：第 1 步先检索（约 1~2 秒）——先把"查到了什么"亮出来，缓解等待感
+        with st.spinner("🔍 第 1 步 / 2：在知识库里检索（向量粗筛 → 精排）..."):
+            hits_data, err = api_post("/api/retrieve", {"question": question})
         if err:
             st.error(f"❌ 后端出错：{err}")
-        elif not data["sources"] and not data["hits"]:
-            st.info(data["answer"])
         else:
-            with st.expander(f"🔍 检索到的 {len(data['hits'])} 个资料块（点击展开）"):
-                for h in data["hits"]:
-                    st.markdown(f"**{h['source']}**（{h['heading']}）· 相关度 {h['score']}")
-            if data["cached"]:
-                st.success("⚡ 命中缓存，本次未调用 API（省钱）")
-            st.markdown("---")
-            st.markdown(data["answer"])
-            if data["sources"]:
-                st.caption("📌 来源：" + "、".join(data["sources"]))
-            # 会话历史（最近 10 条）
-            st.session_state.history.append((question, data["answer"]))
-            with st.expander("📜 本次会话历史"):
-                for q, a in st.session_state.history[-10:]:
-                    st.markdown(f"**Q:** {q}")
-                    st.markdown(f"{a[:120]}…" if len(a) > 120 else a)
-                    st.markdown("---")
+            hits = hits_data.get("hits") or []
+            if hits:
+                st.caption(f"🔍 第 1 步完成：检索到 {len(hits)} 个资料块 —— 正在生成回答（约 5~8 秒）")
+                with st.expander(f"🔍 检索到的 {len(hits)} 个资料块（点击展开）"):
+                    for h in hits:
+                        st.markdown(f"**{h['source']}**（{h['heading']}）· 相关度 {h['score']}")
+            else:
+                st.caption("🔍 第 1 步完成：没有检索到相关资料（确信用了正确说法的话，换个问法试试）")
+
+            # 第 2 步：生成回答（复用第 1 步的检索结果，不重复检索）
+            with st.spinner("🤖 第 2 步 / 2：DeepSeek 正在组织回答..."):
+                data, err = api_post("/api/ask",
+                                     {"question": question, "reuse_last_retrieval": True})
+            if err:
+                st.error(f"❌ 后端出错：{err}")
+            elif not data["sources"] and not data["hits"]:
+                st.info(data["answer"])
+            else:
+                if data["cached"]:
+                    st.success("⚡ 命中缓存，本次未调用 API（省钱）")
+                st.markdown("---")
+                st.markdown(data["answer"])
+                if data["sources"]:
+                    st.caption("📌 来源：" + "、".join(data["sources"]))
+                # 会话历史（最近 10 条）
+                st.session_state.history.append((question, data["answer"]))
+                with st.expander("📜 本次会话历史"):
+                    for q, a in st.session_state.history[-10:]:
+                        st.markdown(f"**Q:** {q}")
+                        st.markdown(f"{a[:120]}…" if len(a) > 120 else a)
+                        st.markdown("---")
