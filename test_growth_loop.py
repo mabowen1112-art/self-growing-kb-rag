@@ -39,6 +39,11 @@ def test_digest_write_and_trim(monkeypatch):
         # 用户要求：摘要不要表情（2026-09-15）
         assert not any(ch in d for ch in "🆕🔧📥🏥🗂👀"), d
 
+        # 低置信任务要列名字（用户问"怎么看低置信内容"→做进摘要，2026-09-16）
+        d2 = growth_loop.build_digest(result, details, 7, 3, 0, 12.3, "auto",
+                                      draft_limit=10, low_names=["Ollama本地部署", "Infra基础设施"])
+        assert "低置信挂起 2 个：Ollama本地部署、Infra基础设施" in d2, d2
+
         growth_loop.write_digest(d, keep=2)
         growth_loop.write_digest("## 第二轮", keep=2)
         growth_loop.write_digest("## 第三轮", keep=2)

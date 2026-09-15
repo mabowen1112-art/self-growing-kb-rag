@@ -99,7 +99,7 @@ DIGEST_KEEP = 30
 
 
 def build_digest(result, details, pool_pending, draft_count, manual_count, elapsed, mode,
-                 draft_limit=10):
+                 draft_limit=10, low_names=None):
     """拼本轮摘要（markdown，## 开头；纯文字，不用表情）。mode: 'auto' / 'apply' / 'preview'"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     drafted = [d["target"].replace(".md", "") for d in details if d.get("outcome") == "drafted"]
@@ -113,7 +113,9 @@ def build_digest(result, details, pool_pending, draft_count, manual_count, elaps
         health_line = "全绿"
     mode_label = {"auto": "自动生长（auto-safe）", "apply": "生长（--apply）", "preview": "预览"}[mode]
     todo = f"- 待你处理：草稿 {draft_count} 篇 / 上限 {draft_limit}（raw/_草稿/）｜ 人工任务 {manual_count} 个"
-    if skipped_low:
+    if low_names:
+        todo += f" ｜ 低置信挂起 {len(low_names)} 个：{'、'.join(low_names[:5])}（做/不做等你定）"
+    elif skipped_low:
         todo += f" ｜ 低置信挂起 {skipped_low} 个"
     if blocked:
         todo += f" ｜ 起草暂缓 {blocked} 篇（草稿已满）"
@@ -199,8 +201,16 @@ def run_loop(apply=False, max_tasks=5, auto_safe=False):
     draft_dir = config.KB_ROOT / "raw" / "_草稿"
     draft_count = len(list(draft_dir.glob("*.md"))) if draft_dir.exists() else 0
     mode = "auto" if auto_safe else ("apply" if apply else "preview")
+    conn = sqlite3.connect(config.META_DB)
+    try:
+        low_names = [r[0].replace(".md", "") for r in conn.execute(
+            "SELECT target FROM tasks WHERE status='pending' AND confidence='low' ORDER BY id")]
+    except sqlite3.OperationalError:
+        low_names = []
+    conn.close()
     digest = build_digest(summary_partial, details, pool_pending, draft_count,
-                          len(manual), elapsed, mode, getattr(config, "DRAFT_LIMIT", 10))
+                          len(manual), elapsed, mode, getattr(config, "DRAFT_LIMIT", 10),
+                          low_names=low_names)
     digest_written = None
     if apply or auto_safe:
         digest_written = write_digest(digest)
