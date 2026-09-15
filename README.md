@@ -18,7 +18,7 @@ E:\ai-learn\rag_kb\
 ├── health_check.py      # 体检（V2卡1）：失效链接/孤立页/词典一致性/过期；2026-09-15 精度修复
 ├── planner.py           # 规划器（V2卡2）：5路信号→LLM任务清单→入库去重
 ├── executor.py          # 执行器（V2卡3）：dry-run安全闸+备份回滚+草稿起草+AI日志
-├── review_sync.py       # 拖拽同步器（V2卡4）：草稿去向→自动approved/rejected
+├── review_sync.py       # 拖拽同步器（V2卡4）：草稿去向→自动approved/rejected + 转正自动收尾（补tags/index）
 ├── growth_loop.py       # 生长循环闭环（V2卡5）：①导入②体检③规划④执行⑤同步⑥复核⑦写《生长摘要》
 │
 ├── kb_db/               # Chroma 向量库（重建生成，不入 git）
@@ -29,7 +29,7 @@ E:\ai-learn\rag_kb\
 ├── ingest_scheduled.bat / growth_scheduled.bat   # 定时任务入口
 ├── install_scheduled_task.bat  # 注册 每日导入/每周生长循环（可关）
 ├── 使用说明.txt          # 用户使用说明（GBK，双击即看）
-└── test_*.py (13个)     # 44 测试全绿
+└── test_*.py (13个)     # 46 测试全绿
 ```
 
 ## 快速开始
@@ -50,7 +50,7 @@ uv run python planner.py                   # 规划器（列任务）
 uv run python review_sync.py               # 审核同步（拖拽感知）
 
 # 4. 全量测试
-uv run pytest                              # 44 passed
+uv run pytest                              # 46 passed
 ```
 
 ## 使用方式（详见 使用说明.txt）
@@ -59,7 +59,7 @@ uv run pytest                              # 44 passed
 |---|---|
 | Obsidian 写笔记 | 22:00 增量导入+分类（幂等零费用） |
 | 双击手动生长循环.bat | 体检→规划→执行→审核同步完整一圈 |
-| 拖 raw/_草稿/X.md 到 concepts/ | review_sync 自动标 approved + 清待审核 tag + 写 log |
+| 拖 raw/_草稿/X.md 到 concepts/ | 自动标 approved + 清待审核 tag + 补 tags/index 条目 + 写 log |
 | 删除 raw/_草稿/X.md | 自动标 rejected（去重记住，不再生成） |
 | 每天 22:00（定时任务 rag_kb_growth） | 完整生长循环（含增量导入）→ 更新《生长摘要.md》 |
 
@@ -101,7 +101,7 @@ schtasks /delete /tn <任务名> /f           # 删除
 - **防幻觉**：问答两层（📌资料+💡补充标注区分）；起草必须结合素材，硬数据不编造
 - **成本管控**：qa_cache 相同问题零费用；一次生长循环约 1 次规划 LLM 调用
 
-## 测试（44 passed）
+## 测试（46 passed）
 
 - V1：ingest 增量 / multimodal 多模态 / classify 分类 / api / rag / app / acceptance 验收
 - V2：health 体检 / planner 规划（假LLM注入+真实端到端）/ executor 执行（备份回滚+草稿）/ review_sync 拖拽同步 / growth_loop 闭环冒烟

@@ -195,6 +195,22 @@ def check_stale(pages):
     return sorted(stale, key=lambda x: -x[2])
 
 
+# ============ 规则5：index 一致性（条目数 vs 声明的总页数，P2 2026-09-16） ============
+
+def check_index_consistency(kb_root=None):
+    """index.md：实际条目（- [[...]]）数 vs 头部声明的"总页数" → dict；无 index 返回 None"""
+    kb_root = Path(kb_root) if kb_root else config.KB_ROOT
+    idx = kb_root / "index.md"
+    if not idx.exists():
+        return None
+    text = idx.read_text(encoding="utf-8")
+    m = re.search(r"总页数：(\d+)", text)
+    declared = int(m.group(1)) if m else None
+    actual = len([l for l in text.splitlines() if l.startswith("- [[")])
+    return {"declared": declared, "actual": actual,
+            "ok": (declared == actual) if declared is not None else (actual == 0)}
+
+
 # ============ 主入口 ============
 
 def run_health(kb_root=None):
@@ -206,6 +222,7 @@ def run_health(kb_root=None):
     orphans = check_orphans(pages, kb_root)
     dict_missing, dict_dead = check_dict_consistency(pages)
     stale = check_stale(pages)
+    index_check = check_index_consistency(kb_root)
 
     report = {
         "total_pages": len([n for n in pages if n not in NAV_PAGES]),
@@ -214,6 +231,7 @@ def run_health(kb_root=None):
         "dict_missing": dict_missing,
         "dict_dead": dict_dead,
         "stale": stale,
+        "index": index_check,
     }
     return report
 
@@ -242,9 +260,14 @@ def print_report(report):
     for name, updated, days in report["stale"][:10]:
         print(f"  🕐 {name}.md（最后更新 {updated}，{days} 天）")
 
+    idx = report.get("index")
+    if idx:
+        print(f"\n📇 index 一致性：声明 {idx['declared']} 页 / 实际 {idx['actual']} 条"
+              + (" ✅" if idx["ok"] else " ⚠️ 不一致，请核对"))
+
     total = (len(report["broken_links"]) + len(report["orphans"]) +
              len(report["dict_missing"]) + len(report["dict_dead"]) +
-             len(report["stale"]))
+             len(report["stale"]) + (1 if (idx and not idx["ok"]) else 0))
     print(f"\n{'=' * 50}")
     print(f"{'✅ 知识库健康' if total == 0 else f'⚠️ 共发现 {total} 个问题，建议逐项修复'}")
     return report

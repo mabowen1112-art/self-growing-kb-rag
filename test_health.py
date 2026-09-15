@@ -152,6 +152,27 @@ def test_draft_dir_excluded():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_index_consistency():
+    """index 一致性规则（P2 配套，2026-09-16）：条目数 vs 声明总页数"""
+    tmp = Path(tempfile.mkdtemp(prefix="health_index_test_"))
+    try:
+        (tmp / "index.md").write_text(
+            "# 知识库索引\n\n> 最后更新：2026-09-16 | 总页数：3\n\n---\n\n## 💡 个人通用\n\n### Concepts\n"
+            "- [[A]] — a\n- [[B]] — b\n", encoding="utf-8")
+        r = hc.check_index_consistency(tmp)
+        assert r and r["declared"] == 3 and r["actual"] == 2 and not r["ok"], r
+
+        (tmp / "index.md").write_text(
+            "# 知识库索引\n\n> 最后更新：2026-09-16 | 总页数：2\n\n---\n\n## 💡 个人通用\n\n### Concepts\n"
+            "- [[A]] — a\n- [[B]] — b\n", encoding="utf-8")
+        r = hc.check_index_consistency(tmp)
+        assert r and r["ok"], r
+
+        assert hc.check_index_consistency(tmp / "nope") is None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_real_kb_finds_issues():
     """真实知识库 smoke test：体检能跑且报告结构完整（不绑定具体问题——
     已知问题修复后可能为 0，断言的是机制本身工作）"""
@@ -162,6 +183,7 @@ def test_real_kb_finds_issues():
     assert isinstance(report["orphans"], list)
     assert isinstance(report["dict_missing"], list)
     assert isinstance(report["stale"], list)
+    assert "index" in report
     print(f"  真实库体检：{report['total_pages']} 页，失效链接 {len(report['broken_links'])}，"
           f"词典遗漏 {len(report['dict_missing'])}，孤立 {len(report['orphans'])}")
 

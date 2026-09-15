@@ -62,7 +62,10 @@ def step_review_sync():
     print("=" * 50)
     import review_sync
     stats = review_sync.sync_reviews()
-    print(f"  转正 {stats['approved']} / 拒绝 {stats['rejected']} / 草稿未动 {stats['untouched']}")
+    line = f"  转正 {stats['approved']} / 拒绝 {stats['rejected']} / 草稿未动 {stats['untouched']}"
+    if stats.get("index_added") or stats.get("tags_filled"):
+        line += f"｜自动收尾：补 index {stats['index_added']} / 补 tags {stats['tags_filled']}"
+    print(line)
     return stats
 
 
