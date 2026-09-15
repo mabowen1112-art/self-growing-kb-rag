@@ -16,6 +16,22 @@ def test_steps_exist():
         assert hasattr(growth_loop, fn), f"缺少步骤函数 {fn}"
 
 
+def test_suggest_actions():
+    """P3（2026-09-16）：建议先做——优先级/上限 3 条/空态"""
+    a = growth_loop.suggest_actions(10, 10, [(1, "link_orphan", "X页")], ["Infra基础设施"], 0)
+    assert len(a) == 3, a
+    assert "已达上限" in a[0] and "审草稿" in a[0], a
+    assert "人工任务 1 个" in a[1] and "X页" in a[1], a
+    assert "低置信" in a[2] and "Infra基础设施" in a[2], a
+
+    # 无草稿时不该出现审草稿；空态
+    b = growth_loop.suggest_actions(0, 10, [], [], 0)
+    assert b == [], b
+    # 超 3 类时只取前 3
+    c = growth_loop.suggest_actions(3, 10, [(1, "link_orphan", "A")], ["B"], 2)
+    assert len(c) == 3, c
+
+
 def test_digest_write_and_trim(monkeypatch):
     """《生长摘要》：内容正确、最新在上、超 keep 条裁剪（P1 2026-09-15，纯本地零费用）"""
     import shutil
@@ -43,6 +59,14 @@ def test_digest_write_and_trim(monkeypatch):
         d2 = growth_loop.build_digest(result, details, 7, 3, 0, 12.3, "auto",
                                       draft_limit=10, low_names=["Ollama本地部署", "Infra基础设施"])
         assert "低置信挂起 2 个：Ollama本地部署、Infra基础设施" in d2, d2
+
+        # P3：建议先做（有/无）
+        d3 = growth_loop.build_digest(result, details, 7, 3, 0, 12.3, "auto",
+                                      draft_limit=10, low_names=["Infra基础设施"],
+                                      actions=["审草稿：3 篇（raw/_草稿/）", "决定低置信任务（做/不做）：Infra基础设施"])
+        assert "建议先做：1) 审草稿：3 篇（raw/_草稿/） ｜ 2) 决定低置信任务（做/不做）：Infra基础设施" in d3, d3
+        d4 = growth_loop.build_digest(result, details, 7, 3, 0, 12.3, "auto")
+        assert "建议先做：无（系统自己跑着，不用你管）" in d4, d4
 
         growth_loop.write_digest(d, keep=2)
         growth_loop.write_digest("## 第二轮", keep=2)

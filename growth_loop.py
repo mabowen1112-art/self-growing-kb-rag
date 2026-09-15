@@ -101,8 +101,28 @@ DIGEST_NAME = "生长摘要.md"
 DIGEST_KEEP = 30
 
 
+def suggest_actions(draft_count, draft_limit, manual_tasks, low_tasks, health_issues):
+    """给用户的"建议先做"（最多 3 条，按优先级）→ [str, ...]
+    P3（2026-09-16）：让"今天该做什么"在《生长摘要》里一眼可见"""
+    out = []
+    if draft_count > 0:
+        if draft_count >= draft_limit:
+            out.append(f"审草稿：{draft_count} 篇（已达上限 {draft_limit}——审到 {draft_limit} 篇以下，自动起草恢复）")
+        else:
+            out.append(f"审草稿：{draft_count} 篇（raw/_草稿/）")
+    if manual_tasks:
+        names = "、".join(t[2] if len(t) > 2 else str(t) for t in manual_tasks[:3])
+        out.append(f"处理人工任务 {len(manual_tasks)} 个：{names}")
+    if low_tasks:
+        names = "、".join(low_tasks[:3])
+        out.append(f"决定低置信任务（做/不做）：{names}")
+    if health_issues:
+        out.append(f"体检有 {health_issues} 个问题待修")
+    return out[:3]
+
+
 def build_digest(result, details, pool_pending, draft_count, manual_count, elapsed, mode,
-                 draft_limit=10, low_names=None):
+                 draft_limit=10, low_names=None, actions=None):
     """拼本轮摘要（markdown，## 开头；纯文字，不用表情）。mode: 'auto' / 'apply' / 'preview'"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     drafted = [d["target"].replace(".md", "") for d in details if d.get("outcome") == "drafted"]
@@ -130,6 +150,11 @@ def build_digest(result, details, pool_pending, draft_count, manual_count, elaps
         f" ｜ 体检 {health_line} ｜ 任务池 {pool_pending}",
         todo,
     ]
+    if actions:
+        lines.append("- 建议先做：" + " ｜ ".join(
+            f"{i}) {a}" for i, a in enumerate(actions, 1)))
+    else:
+        lines.append("- 建议先做：无（系统自己跑着，不用你管）")
     return "\n".join(lines) + "\n"
 
 
@@ -211,9 +236,12 @@ def run_loop(apply=False, max_tasks=5, auto_safe=False):
     except sqlite3.OperationalError:
         low_names = []
     conn.close()
+    health_issues = (len(r2["broken_links"]) + len(r2["orphans"]) + len(r2["dict_missing"]))
+    actions = suggest_actions(draft_count, getattr(config, "DRAFT_LIMIT", 10),
+                              manual, low_names, health_issues)
     digest = build_digest(summary_partial, details, pool_pending, draft_count,
                           len(manual), elapsed, mode, getattr(config, "DRAFT_LIMIT", 10),
-                          low_names=low_names)
+                          low_names=low_names, actions=actions)
     digest_written = None
     if apply or auto_safe:
         digest_written = write_digest(digest)
