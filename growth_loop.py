@@ -78,13 +78,23 @@ def step_contested():
     import os
     from pathlib import Path
     found = []
-    for root, _, files in os.walk(config.KB_ROOT):
+    for root, dirs, files in os.walk(config.KB_ROOT):
         if ".obsidian" in root or ".git" in root or "_草稿" in root:
+            dirs[:] = []
             continue
+        rel_root = Path(root).relative_to(config.KB_ROOT).as_posix()
+        if config.is_private_path(rel_root):
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if not config.is_private_path(
+            d if rel_root == "." else f"{rel_root}/{d}")]
         for fn in files:
             if not fn.endswith(".md"):
                 continue
-            text = (Path(root) / fn).read_text(encoding="utf-8")
+            path = Path(root) / fn
+            if config.is_private_path(path.relative_to(config.KB_ROOT).as_posix()):
+                continue
+            text = path.read_text(encoding="utf-8")
             head = text[:600]
             if "contested: true" in head or "contradictions:" in head:
                 found.append(fn)
@@ -142,6 +152,9 @@ def build_digest(result, details, pool_pending, draft_count, manual_count, elaps
         todo += f" ｜ 低置信挂起 {skipped_low} 个"
     if blocked:
         todo += f" ｜ 起草暂缓 {blocked} 篇（草稿已满）"
+    missing_reviews = result.get("review", {}).get("missing", 0)
+    if missing_reviews:
+        todo += f" ｜ 审核去向待核对 {missing_reviews} 篇"
     lines = [
         f"## {now} · {mode_label} · 耗时 {elapsed:.0f}s",
         f"- 起草新页：{('、'.join(drafted) + ' → raw/_草稿/') if drafted else '无'}",
@@ -209,7 +222,7 @@ def run_loop(apply=False, max_tasks=5, auto_safe=False):
     print(f"  ② 体检：失效链接 {len(r2['broken_links'])} / 孤立页 {len(r2['orphans'])} / 词典漏 {len(r2['dict_missing'])}")
     print(f"  ③ 规划：新增任务 {added_tasks} 个")
     print(f"  ④ 执行：处理 {done_exec} 个（{'自动' if apply else '预览'}）")
-    print(f"  ⑤ 审核同步：转正 {s5['approved']} / 拒绝 {s5['rejected']}")
+    print(f"  ⑤ 审核同步：转正 {s5['approved']} / 拒绝 {s5['rejected']} / 去向待核对 {s5['missing']}")
     print(f"  ⑥ 矛盾标记：{len(s6)} 个")
     if manual:
         print(f"\n  👉 待人工处理 {len(manual)} 个任务（需 Obsidian 手动，处理后在任务表标记 done 或删除）：")

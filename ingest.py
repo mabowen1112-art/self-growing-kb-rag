@@ -46,6 +46,7 @@ def embed_texts(texts):
             headers={"Authorization": f"Bearer {SF_KEY}", "Content-Type": "application/json"},
             json={"model": config.EMBED_MODEL, "input": texts[i:i + config.EMBED_BATCH]},
             timeout=60,
+            proxies={"http": None, "https": None},  # Windows 系统代理可能指向已关闭的本地端口
         )
         r.raise_for_status()
         vectors.extend(d["embedding"] for d in r.json()["data"])
@@ -95,13 +96,19 @@ def scan_files(kb_root: Path):
             if root_rel in config.EXCLUDE_DIRS:
                 dirs[:] = []
                 continue
+            if config.is_private_path(root_rel):
+                dirs[:] = []
+                continue
             dirs[:] = [d for d in dirs
-                       if f"{root_rel}/{d}" not in config.EXCLUDE_DIRS]
+                       if f"{root_rel}/{d}" not in config.EXCLUDE_DIRS
+                       and not config.is_private_path(f"{root_rel}/{d}")]
             for fn in fnames:
                 if Path(fn).suffix.lower() not in config.IMPORT_EXTS:
                     continue
                 abs_path = Path(root) / fn
                 rel = str(abs_path.relative_to(kb_root)).replace("\\", "/")
+                if config.is_private_path(rel):
+                    continue
                 raw = abs_path.read_bytes()
                 h = hashlib.sha256(raw).hexdigest()[:16]
                 title = extract_title(abs_path)
@@ -127,9 +134,12 @@ def extract_title(abs_path):
 
 # ============ ⑤ 稳定 chunk id（增量能成立的前提） ============
 
-def chunk_id(rel_path, heading):
-    """sha1(路径+标题) → 稳定 id：内容不变 id 不变，可增量更新/删除"""
-    return hashlib.sha1(f"{rel_path}|{heading}".encode("utf-8")).hexdigest()
+def chunk_id(rel_path, heading, occurrence=1):
+    """同一标题首次沿用旧 ID，重复出现时加序号，保持增量导入稳定。"""
+    key = f"{rel_path}|{heading}"
+    if occurrence > 1:
+        key += f"\0{occurrence}"
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()
 
 
 # ============ ⑥ 增量同步主逻辑 ============
@@ -153,13 +163,24 @@ def sync(conn, collection, files):
 
     stats["skipped"] = len(files) - len(to_process)
 
+    # 先移除扫描范围外的旧向量（尤其是新设为私密的页面）。即使随后嵌入 API 失败，
+    # 这些资料也不会继续留在普通检索库里。
+    for rel in removed:
+        old = collection.get(where={"doc_path": rel})
+        if old["ids"]:
+            collection.delete(old["ids"])
+            stats["removed_chunks"] += len(old["ids"])
+        conn.execute("DELETE FROM notes WHERE rel_path=?", (rel,))
+    conn.commit()
+    stats["removed_notes"] = len(removed)
+
     # 处理新增/变更：删旧块 → 切片 → 向量化 → 入库 → 更新元数据
     for rel, f in to_process.items():
         is_new = rel in new_notes
 
-        # 卡4：新 md 笔记自动补全 frontmatter（缺 domain/tags/summary 才补，绝不覆盖已有）
-        # 只处理新笔记，老笔记一根毛不碰；补完重算 hash（否则下次 ingest 误判"变更"）
-        if is_new and f["abs"].suffix.lower() == ".md":
+        # 仅维护层可自动补全；raw 是原始证据，导入时不得改写。
+        # 补完重算 hash（否则下次 ingest 误判"变更"）。
+        if is_new and f["abs"].suffix.lower() == ".md" and not rel.startswith("raw/"):
             try:
                 from directions import classify, ensure_frontmatter
                 text = f["abs"].read_text(encoding="utf-8")
@@ -188,8 +209,10 @@ def sync(conn, collection, files):
             chunks = []
 
         ids, docs, metas = [], [], []
+        heading_counts = {}
         for src, heading, content in chunks:
-            ids.append(chunk_id(rel, heading))
+            heading_counts[heading] = heading_counts.get(heading, 0) + 1
+            ids.append(chunk_id(rel, heading, heading_counts[heading]))
             docs.append(content)
             metas.append({"source": rel, "heading": heading, "doc_path": rel,
                           "domain": rel.split("/")[0]})
@@ -213,17 +236,6 @@ def sync(conn, collection, files):
 
     stats["added_notes"] = len(new_notes)
     stats["changed_notes"] = len(changed_notes)
-
-    # 处理删除：Chroma 删块 + SQLite 删记录
-    for rel in removed:
-        old = collection.get(where={"doc_path": rel})
-        if old["ids"]:
-            collection.delete(old["ids"])
-            stats["removed_chunks"] += len(old["ids"])
-        conn.execute("DELETE FROM notes WHERE rel_path=?", (rel,))
-    conn.commit()
-    if removed:
-        stats["removed_notes"] = len(removed)
 
     return stats
 

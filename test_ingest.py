@@ -4,6 +4,7 @@
 # 使用临时目录构造迷你知识库，不污染真实 kb_db / kb_meta.db / 真实知识库
 
 import shutil
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -11,6 +12,65 @@ import chromadb
 
 import ingest
 from extractors import chunk_md
+
+
+def test_new_raw_markdown_is_never_rewritten(tmp_path, monkeypatch):
+    """原始资料允许导入，但导入器不能替它补 frontmatter。"""
+    raw = tmp_path / "raw" / "articles"
+    raw.mkdir(parents=True)
+    path = raw / "原始记录.md"
+    original = "# 原始记录\n\n保留原文，不添加元数据。\n"
+    path.write_text(original, encoding="utf-8")
+    rel = "raw/articles/原始记录.md"
+
+    class Collection:
+        def get(self, where):
+            return {"ids": []}
+
+    import directions
+    monkeypatch.setattr(directions, "classify", lambda _text: {})
+    monkeypatch.setattr(directions, "ensure_frontmatter", lambda text, _result: (
+        text + "\n不应写入\n", ["summary"]))
+    monkeypatch.setattr(ingest, "extract", lambda *_args: [])
+    conn = ingest.init_meta_db(tmp_path / "meta.db")
+    try:
+        ingest.sync(conn, Collection(), {rel: {"abs": path, "title": "原始记录", "hash": "new"}})
+    finally:
+        conn.close()
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_repeated_heading_has_unique_chunk_ids(monkeypatch):
+    """同一笔记重复二级标题不能让 Chroma 收到重复 ID。"""
+    rel = "concepts/重复标题.md"
+    chunks = [(rel, "摘要", "摘要内容足够长，确保会作为独立切片进入向量库。"),
+              (rel, "同名标题", "第一段正文足够长，确保会作为独立切片进入向量库。"),
+              (rel, "同名标题", "第二段正文足够长，确保会作为独立切片进入向量库。")]
+
+    class Collection:
+        def __init__(self):
+            self.ids = []
+
+        def get(self, where):
+            return {"ids": []}
+
+        def add(self, ids, embeddings, documents, metadatas):
+            assert len(ids) == len(set(ids)), "重复标题产生了相同的 Chroma ID"
+            self.ids = ids
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE notes (rel_path TEXT PRIMARY KEY, domain TEXT, title TEXT, "
+                 "chunk_count INTEGER, content_hash TEXT, imported_at TEXT, updated_at TEXT)")
+    conn.execute("INSERT INTO notes (rel_path, content_hash) VALUES (?, ?)", (rel, "old"))
+    monkeypatch.setattr(ingest, "extract", lambda *_: chunks)
+    monkeypatch.setattr(ingest, "embed_texts", lambda docs: [[0.0]] * len(docs))
+    collection = Collection()
+    try:
+        ingest.sync(conn, collection, {rel: {"abs": Path("unused.md"),
+                                             "title": "重复标题", "hash": "new"}})
+    finally:
+        conn.close()
+    assert len(collection.ids) == 3
 
 
 def test_frontmatter_not_chunked():

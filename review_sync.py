@@ -2,7 +2,7 @@
 # 运行：uv run python review_sync.py
 # 原理（差异对比，无需实时监听）：
 #   status='draft' 的任务，草稿文件不在 raw/_草稿/ 了 →
-#     在正式目录找到它（concepts/entities/raw 非草稿区）→ approved：
+#     在正式目录找到带待审核标记的草稿（concepts/entities）→ approved：
 #       清"待审核"tag + 【P2 2026-09-16】自动补 tags（分类器）+ 自动补 index.md 条目 + 写 log
 #     完全消失 → rejected（用户删了）
 # 幂等：重复跑不重复处理（只处理仍为 draft 的任务）
@@ -39,7 +39,7 @@ def draft_tasks(conn):
 
 
 def find_file_anywhere(filename: str):
-    """在正式目录找文件（排除草稿区 + 所有以 . 开头的目录：.trash/.obsidian/.git…）
+    """在库内找同名文件（找到后仍须核对正式目录和待审核标记）。
     ⚠️ 2026-09-16：原先只排除 .obsidian/.git——若 Obsidian 用库内回收站（.trash），
     删掉的草稿会被"找到"→ 误判 approved；现在隐藏目录一律不算"正式目录"。"""
     kb = config.KB_ROOT
@@ -196,9 +196,17 @@ def sync_reviews():
             # 草稿不在了 → 查去向
             found = find_file_anywhere(f"{page_name}.md")
             if found:
+                rel_path = found.relative_to(config.KB_ROOT).as_posix()
+                fm_before, _ = parse_frontmatter_text(found)
+                if rel_path.split("/", 1)[0] not in ("concepts", "entities") or \
+                        "待审核" not in fm_before.get("tags", ""):
+                    # raw/ 不是正式页；现成同名页也不能冒充本次转正。
+                    stats["missing"] += 1
+                    print(f"⚠️ [{task_id}] {page_name}.md 去向不明确（{rel_path}），保留 draft 待人工核对")
+                    continue
                 # 审核通过：清待审核 tag → 自动收尾（补 tags / 补 index 条目）
                 stripped = strip_pending_tag(found)
-                rel_dir = str(found.relative_to(config.KB_ROOT)).replace("\\", "/")
+                rel_dir = rel_path
                 fm, _ = parse_frontmatter_text(found)
                 tags_filled, tags_note = fill_tags_if_empty(found)
                 index_added, index_note = add_index_entry(
@@ -231,4 +239,4 @@ def sync_reviews():
 if __name__ == "__main__":
     stats = sync_reviews()
     print(f"\n📊 同步完成：approved {stats['approved']} / rejected {stats['rejected']} / "
-          f"草稿未动 {stats['untouched']}")
+          f"草稿未动 {stats['untouched']} / 去向待核对 {stats['missing']}")

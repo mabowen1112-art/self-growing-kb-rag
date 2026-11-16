@@ -39,15 +39,22 @@ def collect_pages(kb_root=None):
             continue
         rel_root = Path(root).relative_to(kb_root).as_posix()
         rel_root = "" if rel_root == "." else rel_root
+        if config.is_private_path(rel_root):
+            dirs[:] = []
+            continue
         # 整棵子树跳过（含排除目录自身）——同 ingest 的 EXCLUDE_DIRS 修复（坑#12）
         if any(rel_root == e or rel_root.startswith(e + "/") for e in excl):
             dirs[:] = []
             continue
-        dirs[:] = [d for d in dirs if f"{rel_root}/{d}".lstrip("/") not in excl]
+        dirs[:] = [d for d in dirs
+                   if f"{rel_root}/{d}".lstrip("/") not in excl
+                   and not config.is_private_path(f"{rel_root}/{d}".lstrip("/"))]
         for fn in files:
             if not fn.endswith(".md"):
                 continue
             abs_path = Path(root) / fn
+            if config.is_private_path(abs_path.relative_to(kb_root).as_posix()):
+                continue
             text = abs_path.read_text(encoding="utf-8")
             updated = extract_updated(text)
             pages[Path(fn).stem] = {"path": abs_path, "text": text, "updated": updated}

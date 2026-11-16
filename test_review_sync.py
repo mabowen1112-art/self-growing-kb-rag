@@ -128,6 +128,32 @@ def test_move_to_new_folder_still_approved():
     assert st == "approved", st
 
 
+def test_move_into_raw_is_not_approval():
+    """raw 是证据层，不能因草稿移入而自动转正。"""
+    import review_sync
+    shutil.move(TEST_TMP / "raw" / "_草稿" / "笔记A.md", TEST_TMP / "raw" / "笔记A.md")
+    stats = review_sync.sync_reviews()
+    assert stats["approved"] == 0 and stats["missing"] == 1, stats
+    conn = sqlite3.connect(cfg.META_DB)
+    status = conn.execute("SELECT status FROM tasks WHERE target='笔记A.md'").fetchone()[0]
+    conn.close()
+    assert status == "draft"
+
+
+def test_existing_same_name_is_not_approval():
+    """草稿消失时，不能拿已有同名正式页冒充本次审核通过。"""
+    import review_sync
+    (TEST_TMP / "concepts" / "笔记A.md").write_text(
+        "---\ntitle: 笔记A\ntags: [tool]\n---\n\n原有正式页\n", encoding="utf-8")
+    (TEST_TMP / "raw" / "_草稿" / "笔记A.md").unlink()
+    stats = review_sync.sync_reviews()
+    assert stats["approved"] == 0 and stats["missing"] == 1, stats
+    conn = sqlite3.connect(cfg.META_DB)
+    status = conn.execute("SELECT status FROM tasks WHERE target='笔记A.md'").fetchone()[0]
+    conn.close()
+    assert status == "draft"
+
+
 def test_trash_is_rejected_and_draft_subfolder_untouched():
     """① 删到库内回收站 .trash → 算拒绝（不算"正式目录找到"）
        ② 草稿挪进 _草稿 的子文件夹 → 算未动（不误判拒绝）"""

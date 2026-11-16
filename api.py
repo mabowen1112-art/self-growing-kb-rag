@@ -38,7 +38,8 @@ _RETRIEVAL_TTL = 120.0
 
 def _hits_json(hits):
     return [{"source": m["source"], "heading": m["heading"], "score": round(s, 3)}
-            for _d, m, s in hits]
+            for _d, m, s in hits
+            if not config.is_private_path(m.get("doc_path") or m.get("source", ""))]
 
 
 class AskResponse(BaseModel):
@@ -73,6 +74,9 @@ def ask(req: AskRequest):
     if (req.reuse_last_retrieval and _LAST_RETRIEVAL["question"] == question
             and time.time() - _LAST_RETRIEVAL["ts"] < _RETRIEVAL_TTL):
         hits = _LAST_RETRIEVAL["hits"]      # 复用第 1 步的检索结果（省一次 embedding+rerank）
+        if hits is not None:
+            hits = [hit for hit in hits if not config.is_private_path(
+                hit[1].get("doc_path") or hit[1].get("source", ""))]
     if hits is None:
         try:
             hits = retrieve(question)

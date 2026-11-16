@@ -11,6 +11,18 @@ from pathlib import Path
 import planner
 
 
+def test_planner_pauses_when_draft_queue_is_full(tmp_path, monkeypatch):
+    """审核积压时不再生成更多 AI 任务。"""
+    drafts = tmp_path / "drafts"
+    drafts.mkdir()
+    (drafts / "待审核.md").write_text("草稿", encoding="utf-8")
+    monkeypatch.setattr(planner.config, "DRAFT_DIR", drafts)
+    monkeypatch.setattr(planner.config, "DRAFT_LIMIT", 1)
+    monkeypatch.setattr(planner, "collect_signals", lambda *_: (_ for _ in ()).throw(
+        AssertionError("草稿满时不应继续扫描或调用 LLM")))
+    assert planner.run_planner(meta_db=tmp_path / "meta.db") == 0
+
+
 def make_fixture_kb(root: Path):
     """迷你知识库：1 个失效链接 + 1 个待学习条目 + 1 篇未分类笔记"""
     concepts = root / "concepts"

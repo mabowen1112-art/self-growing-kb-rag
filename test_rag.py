@@ -2,16 +2,11 @@
 # 运行：uv run python test_rag.py（真实调 embedding + DeepSeek API，约 10-20 秒）
 # 检查三件事：① 库里有数据 ② 能检索到并带来源回答 ③ 防幻觉（没有的不编）
 
-import os
 import subprocess
 import sys
 
 
 def test_rag():
-    # ① 清缓存（保证每次测试真实调 API，确定性）
-    if os.path.exists("qa_cache.json"):
-        os.remove("qa_cache.json")
-
     # ② 库里有数据
     import chromadb
     col = chromadb.PersistentClient(path="./kb_db").get_collection("my_kb")
@@ -35,14 +30,14 @@ def test_rag():
     out1b = r1b.stdout
     assert "命中缓存" in out1b, f"第二次提问没有命中缓存：{out1b[:200]}"
 
-    # ④ 检索质量（rerank）：问"马博文是谁"必须命中 马博文.md（曾检不全）
+    # ④ 私密画像已隔离：普通问答不得返回实体页作为检索来源
     r3 = subprocess.run(
         ["uv", "run", "python", "ask_kb.py", "马博文是谁？"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180,
     )
     out3 = r3.stdout
     assert r3.returncode == 0, f"ask_kb 崩溃：{r3.stderr}"
-    assert "马博文.md" in out3, "rerank 后仍没命中马博文.md（检索优化失效？）"
+    assert "📄 entities/马博文.md" not in out3, "普通问答检索到了私密画像"
 
     # ④ 防幻觉：库外问题必须拒绝，不能编造
     r2 = subprocess.run(

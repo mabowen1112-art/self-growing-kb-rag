@@ -1,5 +1,6 @@
 # test_acceptance.py — V1 总验收（卡6，PRD §9）
-# 运行：uv run pytest test_acceptance.py（真实调 embedding + DeepSeek，约 40-80 秒）
+# 运行：uv run pytest -m integration test_acceptance.py（真实调 embedding + DeepSeek，约 40-80 秒）
+# ⚠️ 需要本地知识库（config.KB_ROOT）+ API key；没有私库的人跑不了，所以默认被 pytest.ini 跳过
 # 三项验收：
 #   ① 导入笔记数 ≥ 100（进度项：V1 周期 9-11 月，11 月底最终验收，当前报缺口不硬卡）
 #   ② 连问 10 题 ≥ 8 题带正确来源（功能项：现在必须过）
@@ -8,18 +9,24 @@
 import os
 import sqlite3
 
+import pytest
+
 import config
+
+pytestmark = pytest.mark.integration
 
 QUESTIONS = [
     # (问题, 预期来源关键词)
     # ⚠️ 题集选问法可靠的问题：实测"学透标准分几层？"rerank 会被 PRD 引用块带偏（PRD 勿写验收题原文），改用具体问法
-    ("复利是什么？", "金融通识课.md"),
-    ("定投是什么意思？", "金融通识课.md"),
-    ("马博文是谁？", "马博文.md"),
+    # 2026-11-16 修：金融课拆成单课文件后旧期望值失效（命中正确文件但字符串不匹配）；
+    #               "马博文是谁/考研还是就业"改为公开题——那两页在 config.PRIVATE_FILES 里，按设计不进 RAG
+    ("复利是什么？", "金融通识课-第01课"),
+    ("定投是什么意思？", "金融通识课-第05课"),
+    ("信息差是什么？", "信息差与赚钱方法论.md"),
     ("ESP32 怎么点灯？", "ESP32硬件课"),
     ("RAG 是什么？", "RAG.md"),
     ("学透标准 L0 L1 L2 L3 是什么？", "学透标准"),
-    ("考研还是就业？", "考研vs就业"),
+    ("工作流应该怎么搭？", "工作流搭建.md"),
     ("YOLO 是什么？", "学习概念词典.md"),
     ("AI工具生态有哪些？", "AI工具生态.md"),
     ("什么是半自生长知识库？", "AI项目-自生长知识库.md"),

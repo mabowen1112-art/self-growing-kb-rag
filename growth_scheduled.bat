@@ -6,14 +6,15 @@ cd /d E:\ai-learn\rag_kb
 
 echo [%date% %time%] ==== 定时生长循环开始 ==== >> growth.log
 call :run_with_retry uv run python growth_loop.py --auto-safe >> growth.log 2>&1
-if errorlevel 1 (
+set "run_result=%errorlevel%"
+if not "%run_result%"=="0" (
     echo [%date% %time%] FAILED 三次尝试均失败，写入标记文件 >> growth.log
     echo [%date% %time%] FAILED > growth_failed.flag
 ) else (
     del growth_failed.flag 2>nul
 )
 echo [%date% %time%] ==== 结束 ==== >> growth.log
-exit /b 0
+exit /b %run_result%
 
 :run_with_retry
 call %*

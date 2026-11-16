@@ -17,9 +17,11 @@ wheels/
 kb_db/
 kb_meta.db
 qa_cache.json
+qa_cache_public_*.json
 ingest.log
 *.log
 eval_results/
+scratch/
 
 # ---- 本地小工具文件（课程演示用，不入库）----
 demo_json.py

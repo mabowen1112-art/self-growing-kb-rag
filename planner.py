@@ -136,11 +136,12 @@ def llm_plan(signals_text: str):
 - classify_note: 给未分类笔记确认 domain
 
 规则：
-1. new_knowledge 是重点——判断哪些"该学/被提到但没有"的概念值得建页，detail 写清理由和从哪个现有页切入
+1. new_knowledge 仅在有明确使用场景、可核对素材且现有页面容纳不了时提出；一次随口提及或同义概念不单独建页。detail 写清用途、来源及相对现有页的新内容
 2. fix_link 的 detail 必须给出"应改为指向哪个现有页面"
 3. 拿不准的 confidence=low，有把握的 high
 4. 最多生成 {MAX_TASKS} 个任务，宁缺毋滥，没有值得做的就返回空数组
 5. 新建页 target 用 "概念名.md" 格式
+6. 不根据旧对话或 AI 推断自动建立用户画像、能力和长期决策任务
 
 【知识库现状】
 {signals_text}
@@ -159,6 +160,7 @@ def llm_plan(signals_text: str):
             "response_format": {"type": "json_object"},
         },
         timeout=90,
+        proxies={"http": None, "https": None},
     )
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
@@ -239,6 +241,11 @@ def save_tasks(tasks, source="planner", conn=None, meta_db=None):
 
 def run_planner(llm_fn=None, kb_root=None, meta_db=None):
     """跑完整规划 → 返回新增任务数（llm_fn 可注入替身，测试用）"""
+    draft_dir = Path(kb_root) / "raw" / "_草稿" if kb_root else config.DRAFT_DIR
+    draft_count = len(list(draft_dir.glob("*.md"))) if draft_dir.exists() else 0
+    if draft_count >= config.DRAFT_LIMIT:
+        print(f"⏸ 草稿区已满（{draft_count}/{config.DRAFT_LIMIT}），暂停新增 AI 任务，先审现有草稿")
+        return 0
     # 任务池总量上限（2026-09-06）：pending > 30 暂停生成，提示先处理积压
     import sqlite3 as _sq
     conn = _sq.connect(meta_db or config.META_DB)

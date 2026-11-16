@@ -2,18 +2,12 @@
 # 运行：uv run pytest test_api.py
 # 检查：① health 正常 ② ask 带来源回答 ③ 空问题 400 ④ 检索 hits 结构
 
-import os
-
 from fastapi.testclient import TestClient
 
 import api
 
 
 def test_api():
-    # 清缓存（保证这次真实调 API，确定性）
-    if os.path.exists("qa_cache.json"):
-        os.remove("qa_cache.json")
-
     client = TestClient(api.app)
 
     # ① 健康检查：库有数据

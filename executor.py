@@ -242,6 +242,7 @@ summary: 一句话摘要
               "messages": [{"role": "user", "content": prompt}],
               "temperature": 0.3, "max_tokens": 3000},  # 2026-09-11 1500→3000（草稿较长，防新模型截断）
         timeout=120,
+        proxies={"http": None, "https": None},
     )
     r.raise_for_status()
     content = r.json()["choices"][0]["message"]["content"]

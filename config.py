@@ -2,9 +2,11 @@
 # 修改配置后：增量导入自动生效；全量重建用 python ingest.py --rebuild
 
 from pathlib import Path
+import os
 
 # ---- 路径 ----
-KB_ROOT = Path(r"E:\自生长知识库")          # 知识库根目录（只读，绝不修改内容）
+# 知识库根目录（只读，绝不修改内容）；可用环境变量 KB_ROOT 覆盖，默认作者本机路径
+KB_ROOT = Path(os.environ.get("KB_ROOT", r"E:\自生长知识库"))
 KB_DB_DIR = Path("./kb_db")                  # Chroma 向量库（本地持久化）
 META_DB = Path("./kb_meta.db")               # SQLite 元数据库（笔记清单+hash+状态）
 COLLECTION_NAME = "my_kb"                    # Chroma 集合名
@@ -13,6 +15,30 @@ COLLECTION_NAME = "my_kb"                    # Chroma 集合名
 # 新增目录直接往列表里加；用 exclude 排除子目录
 IMPORT_DIRS = ["concepts", "entities", "raw"]
 EXCLUDE_DIRS = ["raw/_草稿"]                  # AI起草的新笔记草稿区（审核转正前不进向量库）
+
+# 私人经历与旧画像仅在用户明确要求参考相关记录时，由维护者按需读原文件。
+# 普通 RAG、自动规划和生长循环不导入这些页面；历史对话整组隔离。
+PRIVATE_DIRS = ("concepts/对话记录", "concepts/语音笔记", "raw/transcripts")
+PRIVATE_FILES = frozenset({
+    "entities/马博文.md",
+    "entities/马博文-历史画像-2026-09-11.md",
+    "entities/个人生活画像.md",
+    "entities/东北大学.md",  # 页面含未经复核的个人就读断言
+    "concepts/个人发展规划.md",
+    "concepts/技术技能树.md",
+    "concepts/考研vs就业决策.md",
+    "concepts/AI时代脱颖而出.md",
+    "concepts/游戏兴趣.md",
+    "concepts/大学课程体系.md",
+    "raw/articles/career-planning-advice.md",
+    "raw/articles/edge-bookmarks.md",
+})
+
+
+def is_private_path(rel_path):
+    rel = str(rel_path).replace("\\", "/").strip("/")
+    return rel in PRIVATE_FILES or any(
+        rel == directory or rel.startswith(directory + "/") for directory in PRIVATE_DIRS)
 
 # ---- AI 起草草稿目录（executor V2卡3）----
 DRAFT_DIR = KB_ROOT / "raw" / "_草稿"
@@ -43,7 +69,7 @@ RERANK_MIN_SCORE = 0.25                      # 相关度阈值（2026-09-11 实�
 # ---- LLM ----
 CHAT_URL = "https://api.deepseek.com/chat/completions"
 CHAT_MODEL = "deepseek-chat"
-QA_CACHE_FILE = Path("./qa_cache.json")      # 问答缓存（相同问题零费用）
+QA_CACHE_FILE = Path("./qa_cache_public_v4.json")  # 来源校验升级后不加载旧答案
 
 # ---- API Key（从 .env 读，绝不写死在代码里）----
 # SILICONFLOW_API_KEY / DEEPSEEK_API_KEY 在 .env 里配置
